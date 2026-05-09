@@ -59,8 +59,3 @@ cutlass_example_add_executable(
   cute_tutorial_tiled_copy_if
   tiled_copy_if.cu
 )
-
-cutlass_example_add_executable(
-  cute_tutorial_hgemm_naive
-  hgemm_naive.cu
-)

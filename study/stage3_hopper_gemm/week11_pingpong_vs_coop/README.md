@@ -8,6 +8,9 @@
 - 完成 Stage 3 CHECKPOINT：v3 ≥ 70% cuBLAS
 
 ## 读
+
+> 本周读 Pingpong / Cooperative 两份 kernel 骨架；详见 [cutlass_reading_strategy.md §2](../../cutlass_reading_strategy.md#2-warpspec-kernel-骨架--includecutlassgemmkernel)。
+
 - `include/cutlass/gemm/kernel/sm90_gemm_tma_warpspecialized_pingpong.hpp` — Pingpong 完整骨架
   - 关注 `is_producer_warp` 分支与两个 MMA warpgroup 的 ping-pong 切换
 - `include/cutlass/gemm/kernel/sm90_gemm_tma_warpspecialized_cooperative.hpp` — Cooperative

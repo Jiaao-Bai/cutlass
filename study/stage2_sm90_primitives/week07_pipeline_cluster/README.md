@@ -8,6 +8,9 @@
 - 完成 Stage 2 CHECKPOINT：minimal warpspec ping-pong toy
 
 ## 读
+
+> 本周是阅读 `include/cutlass/pipeline/sm90_pipeline.hpp` 的入口；完整阅读策略见 [cutlass_reading_strategy.md](../../cutlass_reading_strategy.md#1-pipeline-抽象--includecutlasspipeline)。
+
 - `include/cutlass/pipeline/sm90_pipeline.hpp` — `PipelineAsync` / `PipelineTmaAsync`
   - `PipelineState`：循环 buffer 的 index + phase，避免 ABA
   - 4 步协议：`producer_acquire` → `producer_commit` → `consumer_wait` → `consumer_release`

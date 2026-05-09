@@ -8,6 +8,9 @@
 - 能说出 `CollectiveBuilder` 帮你省掉了哪些手写代码
 
 ## 读
+
+> 本周开始接触 `include/cutlass/gemm/`；先看 [cutlass_reading_strategy.md](../../cutlass_reading_strategy.md) 知道哪些必读、哪些跳过（约 38 万行 2.x 遗产可以直接跳）。
+
 - `media/docs/cpp/gemm_api_3x.md` — **必读**，5 层 API 设计文档
 - `media/docs/cpp/cutlass_3x_design.md` — 设计哲学
 - `include/cutlass/gemm/kernel/gemm_universal.hpp` — 3.x kernel 骨架

@@ -392,6 +392,86 @@ FA(B,H,S,d):   算术强度 ≈ S/8（d=128 时约 16），decode 阶段 memory 
 
 ---
 
+## `include/cutlass/` 目录阅读策略
+
+`cutlass/` 目录共 67 万行、671 个文件，大部分是 2.x 遗产，对我们的目标没有价值。
+以下是精确的取舍判断。
+
+### 必读：直接有用（约 5000 行）
+
+**1. Pipeline 抽象（`include/cutlass/pipeline/`）**
+
+| 文件 | 行数 | 核心内容 |
+|------|------|----------|
+| `sm90_pipeline.hpp` | 1388 | `PipelineTmaAsync`：TMA producer / MMA consumer 同步模型 |
+| `sm100_pipeline.hpp` | 1328 | B200 的 pipeline 差异（TMEM 引入后 consumer 语义变化） |
+
+`sm90_pipeline.hpp` 的设计重点：
+- `PipelineState`：循环 buffer 的 index + phase，避免 ABA 问题
+- `producer_acquire` → `producer_commit` → `consumer_wait` → `consumer_release` 的 4 步协议
+- `spread_arrivals_to_warpgroup`：把 barrier arrive 均摊到 warpgroup 内所有线程
+
+自己写 FlashAttention / MoE kernel 时，producer/consumer 同步直接参照这个模式。
+
+**2. WarpSpec Kernel 骨架（`include/cutlass/gemm/kernel/`）**
+
+| 文件 | 行数 | 核心内容 |
+|------|------|----------|
+| `sm90_gemm_tma_warpspecialized_pingpong.hpp` | 947 | TMA warp 和 MMA warpgroup 分工、pipeline state 流转的完整实现 |
+| `sm90_gemm_tma_warpspecialized_cooperative.hpp` | — | 两个 warpgroup 协同算同一 tile 的变体 |
+
+Pingpong kernel 的结构（`sm90_gemm_tma_warpspecialized_pingpong.hpp`）：
+```
+kernel()
+├── if (is_producer_warp)
+│     load()  ← TMA 异步搬运 A/B，配合 producer_acquire/commit
+└── else (MMA warpgroup 0 or 1)
+      mma()   ← WGMMA + consumer_wait/release，两个 warpgroup 交替
+```
+
+写自己的 FA kernel 骨架时直接参考这个分工结构。
+
+**3. Collective Mainloop（`include/cutlass/gemm/collective/`）**
+
+| 文件 | 行数 | 核心内容 |
+|------|------|----------|
+| `sm90_mma_tma_gmma_ss_warpspecialized.hpp` | 584 | `load()` / `mma()` 分离，pipeline depth 控制，smem tile 管理 |
+
+设计亮点：`load()` 和 `mma()` 是两个独立函数，分别由不同 warpgroup 调用，通过 pipeline state 对齐。这种分离是写 FA 时 QK^T 和 PV 两阶段 mainloop 的直接参考。
+
+**4. Tile Scheduler（`include/cutlass/gemm/kernel/`）**
+
+| 文件 | 核心内容 |
+|------|----------|
+| `sm90_tile_scheduler.hpp` | 基础 persistent scheduler，`get_current_work()` 接口 |
+| `sm90_tile_scheduler_group.hpp` | Grouped GEMM 调度，不等长 expert 的负载分配 |
+| `tile_scheduler_params.h` | scheduler 参数结构，stream-K / data-parallel 策略选择 |
+
+`get_current_work()` 的动态调度设计可以直接复用到自定义 MoE kernel 的 expert 负载均衡。
+
+### 选读：设计思路可借鉴
+
+**EVT（Epilogue Visitor Tree）**
+
+| 文件 | 内容 |
+|------|------|
+| `include/cutlass/epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp` | epilogue TMA 写回 |
+| `include/cutlass/epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp` | EVT callback 组合 |
+
+EVT 把 `alpha*C + beta*D`、bias add、activation 等后处理组合成一棵**编译期类型树**，在 kernel 里零开销展开。写 FA 时 softmax rescale + output accumulate 阶段可以借鉴这个组合模式。
+
+### 不用看（2.x 遗产，共约 38 万行）
+
+| 目录 | 原因 |
+|------|------|
+| `gemm/threadblock/` | 2.x 的 `DefaultMmaCore`、tile iterator，全部被 collective 替代 |
+| `gemm/warp/` | 2.x 的 `WarpMma`，被 TiledMma 替代 |
+| `transform/threadblock/` | 2.x 的数据搬运，被 TMA 替代 |
+| `conv/` | 卷积，当前目标不涉及 |
+| `epilogue/threadblock/` | 2.x 的 epilogue，被 collective epilogue 替代 |
+
+---
+
 ## 精简版阅读顺序
 
 ```

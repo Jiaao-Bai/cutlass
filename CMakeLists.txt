@@ -1169,6 +1169,11 @@ if (CUTLASS_ENABLE_EXAMPLES)
   add_dependencies(test_all test_examples)
 endif()
 
+option(CUTLASS_ENABLE_STUDY "Build personal CuTe/Hopper/Blackwell study exercises under study/" OFF)
+if (CUTLASS_ENABLE_STUDY)
+  add_subdirectory(study)
+endif()
+
 if (CUTLASS_ENABLE_TESTS)
   add_subdirectory(test)
   if (CUTLASS_ENABLE_GTEST_UNIT_TESTS)

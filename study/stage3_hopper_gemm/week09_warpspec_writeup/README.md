@@ -8,6 +8,9 @@
 - 性能不重要，正确性优先
 
 ## 读
+
+> 本周读两份 cutlass/ 必读文件（kernel 骨架 + collective mainloop）；详见 [cutlass_reading_strategy.md §2-§3](../../cutlass_reading_strategy.md#2-warpspec-kernel-骨架--includecutlassgemmkernel)。
+
 - `include/cutlass/gemm/kernel/sm90_gemm_tma_warpspecialized.hpp` — 基础 WarpSpec 完整骨架（必读）
 - `include/cutlass/gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp` — `load()` / `mma()` 分离 mainloop
 - `include/cutlass/pipeline/sm90_pipeline.hpp` — pipeline state 流转（W7 已读，复习）

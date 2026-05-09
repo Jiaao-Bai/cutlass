@@ -147,23 +147,21 @@ make study_stage1_w02_hgemm_naive -j
 
 ---
 
-## `include/cutlass/` 阅读策略（精简）
+## `include/cutlass/` 阅读策略
 
-`cutlass/` 共 67 万行，大部分是 2.x 遗产。**必读**约 5000 行：
+`cutlass/` 共 67 万行，**必读约 5000 行**，**38 万行 2.x 遗产可直接跳过**。完整清单和"哪一周读哪一段"的映射，见单独的：
 
-- `pipeline/sm90_pipeline.hpp`（1388 行）— TMA producer / MMA consumer 同步模型
-- `pipeline/sm100_pipeline.hpp`（1328 行）— B200 因 TMEM 引入的 consumer 语义变化
-- `gemm/kernel/sm90_gemm_tma_warpspecialized_pingpong.hpp`（947 行）— WarpSpec 完整骨架
-- `gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp`（584 行）— `load()` / `mma()` 分离的 mainloop
-- `gemm/kernel/sm90_tile_scheduler*.hpp` — persistent scheduler，可复用到 MoE
+→ **[cutlass_reading_strategy.md](cutlass_reading_strategy.md)**
 
-**选读**：`epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp` + `epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp`，理解 EVT 编译期组合。
+简单说：
+- `pipeline/sm90_pipeline.hpp`（1388 行）→ Stage 2 W7
+- `gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp`（584 行）→ Stage 3 W8/W9
+- `gemm/kernel/sm90_gemm_tma_warpspecialized_pingpong.hpp`（947 行）→ Stage 3 W11
+- `gemm/kernel/sm90_tile_scheduler*.hpp` → Stage 3 W10、Stage 5 W16
+- `pipeline/sm100_pipeline.hpp`（1328 行）→ Stage 6 W19
+- 选读：EVT（`epilogue/collective/` + `epilogue/fusion/`）→ Stage 3 W10
 
-**不用看**（约 38 万行）：
-- `gemm/threadblock/`、`gemm/warp/` — 2.x 遗产
-- `transform/threadblock/` — 已被 TMA 替代
-- `epilogue/threadblock/` — 已被 collective epilogue 替代
-- `conv/` — 当前目标不涉及
+**不要一上来就把 5000 行刷完**。每周用到再读，否则没上下文。
 
 ---
 

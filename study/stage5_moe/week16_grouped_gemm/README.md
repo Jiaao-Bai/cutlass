@@ -8,6 +8,9 @@
 - 自写一个 minimal grouped GEMM（5 个不等长 problem）
 
 ## 读
+
+> Tile scheduler 是 cutlass/ 必读区的最后一块；详见 [cutlass_reading_strategy.md §4](../../cutlass_reading_strategy.md#4-tile-scheduler--includecutlassgemmkernel)。
+
 - `examples/57_hopper_grouped_gemm/57_hopper_grouped_gemm.cu`
 - `include/cutlass/gemm/kernel/sm90_tile_scheduler_group.hpp` — Group tile scheduler
 - `include/cutlass/gemm/kernel/sm90_gemm_array_tma_warpspecialized*.hpp` — array variants

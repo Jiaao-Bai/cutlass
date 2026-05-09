@@ -8,9 +8,13 @@
 - 写一份 OPTIMIZATION_LOG.md，每项优化对应 ncu 指标变化
 
 ## 读
+
+> 本周读 builder 和 tile scheduler；详见 [cutlass_reading_strategy.md §3-§4](../../cutlass_reading_strategy.md#3-collective-mainloop--includecutlassgemmcollective) 和 [选读：EVT](../../cutlass_reading_strategy.md#evt--epilogue-visitor-tree)。
+
 - `include/cute/atom/mma_traits_sm90_gmma.hpp:71-200` — 各种 swizzle atom，挑对的
 - `include/cutlass/gemm/collective/builders/sm90_gmma_builder.inl` — Builder 是怎么选 swizzle / depth / cluster 的，抄它的逻辑
 - `include/cutlass/gemm/kernel/sm90_tile_scheduler.hpp` — persistent scheduler 入门
+- **选读**：`include/cutlass/epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp` + `include/cutlass/epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp` — EVT 编译期组合
 
 ## 优化 checklist（按收益从大到小）
 
@@ -28,6 +32,9 @@
   - diff（哪些行变了）
   - ncu 数据对比（before / after）
   - 是否符合预期，不符合的根因
+- **选做**：`exercises/ex_evt_bias_relu.cu` — 用 EVT 给 v2 epilogue 加 `D = ReLU(alpha*A*B + beta*C + bias)`
+  - 对比手写 epilogue 的 SASS，确认 EVT 没多读多写一次 GMEM
+  - 用于以后 FA 的 softmax rescale + output accumulate 借鉴 visitor pattern
 
 ## 跑
 ```bash

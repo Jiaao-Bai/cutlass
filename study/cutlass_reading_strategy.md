@@ -1,0 +1,125 @@
+# `include/cutlass/` 阅读策略
+
+`cutlass/` 目录共约 67 万行、671 个文件，大部分是 2.x 遗产，对"CuTe + 3.x + Hopper/Blackwell"的目标没价值。
+本文是精确的取舍清单，**每条都标了对应在学习计划的哪一周用到**，不要一上来就全读。
+
+---
+
+## 必读（约 5000 行，分散在 6 个文件）
+
+### 1. Pipeline 抽象 — `include/cutlass/pipeline/`
+
+| 文件 | 行数 | 何时读 |
+|------|------|--------|
+| `sm90_pipeline.hpp` | 1388 | [Stage 2 W7](stage2_sm90_primitives/week07_pipeline_cluster/) |
+| `sm100_pipeline.hpp` | 1328 | [Stage 6 W19](stage6_b200_increment/week19_tmem_umma/) 之后，对照读 |
+
+**`sm90_pipeline.hpp` 设计重点**（W7 必看）：
+- `PipelineState`：循环 buffer 的 `index + phase`，避免 ABA 问题
+- 4 步协议：`producer_acquire` → `producer_commit` → `consumer_wait` → `consumer_release`
+- `spread_arrivals_to_warpgroup`：把 barrier `arrive` 均摊到 warpgroup 内所有线程，避免单线程瓶颈
+
+写 FlashAttention / MoE kernel 时，producer/consumer 同步直接参照这个模式。
+
+**`sm100_pipeline.hpp` 增量**（W19 必看）：
+- 比 SM90 多一组 TMEM 相关 mbarrier
+- consumer 语义在 UMMA 写 TMEM 之后才能 release
+- `PipelineTmaUmmaAsync` 是 SM100 的主力
+
+### 2. WarpSpec Kernel 骨架 — `include/cutlass/gemm/kernel/`
+
+| 文件 | 行数 | 何时读 |
+|------|------|--------|
+| `sm90_gemm_tma_warpspecialized.hpp` | — | [Stage 3 W9](stage3_hopper_gemm/week09_warpspec_writeup/) — 写 v1 时直接抄结构 |
+| `sm90_gemm_tma_warpspecialized_pingpong.hpp` | 947 | [Stage 3 W11](stage3_hopper_gemm/week11_pingpong_vs_coop/) |
+| `sm90_gemm_tma_warpspecialized_cooperative.hpp` | — | Stage 3 W11 |
+| `sm100_gemm_tma_warpspecialized.hpp` | — | [Stage 6 W20](stage6_b200_increment/week20_sm100_gemm/) |
+
+**Pingpong kernel 的结构骨架**（W11）：
+```
+kernel()
+├── if (is_producer_warp)
+│     load()  ← TMA 异步搬运 A/B，配合 producer_acquire/commit
+└── else (MMA warpgroup 0 或 1)
+      mma()   ← WGMMA + consumer_wait/release，两个 warpgroup 交替
+```
+
+写 FA / MoE kernel 骨架时，分工结构直接参考这个。Cooperative 与 Pingpong 的差别在 mma() 内部两个 warpgroup 的协同方式（同 tile vs 不同 tile）。
+
+### 3. Collective Mainloop — `include/cutlass/gemm/collective/`
+
+| 文件 | 行数 | 何时读 |
+|------|------|--------|
+| `sm90_mma_tma_gmma_ss_warpspecialized.hpp` | 584 | [Stage 3 W8 + W9](stage3_hopper_gemm/) |
+| `builders/sm90_gmma_builder.inl` | — | [Stage 3 W10](stage3_hopper_gemm/week10_warpspec_optimize/) — 抄它的 swizzle/depth 选择逻辑 |
+| `sm100_mma_*.hpp` | — | [Stage 6 W20](stage6_b200_increment/week20_sm100_gemm/) |
+
+**设计亮点**（W9 必抓）：
+- `load()` 和 `mma()` 是两个**独立函数**，分别由不同 warpgroup 调用，通过 pipeline state 对齐
+- 这种分离模式是写 FA 时 QK^T 与 PV 两阶段 mainloop 的直接参考——把它当模板复用
+
+`builders/sm90_gmma_builder.inl`（W10）：Builder 帮你做了什么——swizzle 选哪个、pipeline depth 设多少、cluster shape 配合 multicast——直接抄它的判断逻辑到自己的 kernel。
+
+### 4. Tile Scheduler — `include/cutlass/gemm/kernel/`
+
+| 文件 | 何时读 |
+|------|--------|
+| `sm90_tile_scheduler.hpp` | [Stage 3 W10](stage3_hopper_gemm/week10_warpspec_optimize/) — persistent scheduler 入门 |
+| `sm90_tile_scheduler_group.hpp` | [Stage 5 W16](stage5_moe/week16_grouped_gemm/) — Grouped GEMM 调度 |
+| `tile_scheduler_params.h` | Stage 3 W10 — stream-K / data-parallel 策略选择 |
+
+**`get_current_work()` 的动态调度设计**：可以直接复用到自定义 MoE kernel 的 expert 负载均衡（Stage 5 W18）。
+
+`stream-K` 是把 K 维度也切给不同 SM 协作算同一个 (M,N) tile，对极扁矩阵（M、N 小、K 大）有奇效。Stage 3 W11 ping-pong vs cooperative 之外，可以加一个 stream-K 变体作为额外练习。
+
+---
+
+## 选读（设计思路可借鉴）
+
+### EVT — Epilogue Visitor Tree
+
+| 文件 | 何时读 |
+|------|--------|
+| `epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp` | [Stage 3 W10](stage3_hopper_gemm/week10_warpspec_optimize/) — epilogue TMA 写回 |
+| `epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp` | Stage 3 W10 — EVT callback 组合 |
+| `epilogue/fusion/operations.hpp` | Stage 3 W10 — `LinearCombination` / `Bias` / `Activation` 等基础 op |
+
+EVT 把 `alpha*C + beta*D`、bias add、activation 等后处理组合成一棵**编译期类型树**，在 kernel 里零开销展开。
+
+**为什么是"选读"**：手写 GEMM 自己写 epilogue 可以不用 EVT，但写 FA 时 softmax rescale + output accumulate 的 visitor pattern 可以借鉴；写 MoE 时 SwiGLU fuse 在 first GEMM epilogue 也可以借鉴这个组合模式。
+
+**Stage 3 W10 推荐**：读完 builder 后，加一个 EVT 练习 `ex_evt_bias_relu.cu`（在 v2 epilogue 加 bias + ReLU），看一遍编译产物的 SASS，确认确实没多读多写。
+
+### 其它可选
+
+- `include/cutlass/arch/barrier.h` — mbarrier 底层 wrapper（W7 顺手看）
+- `include/cutlass/conv/` 的 3.x 部分 — 当前目标不涉及，但 conv 的 implicit GEMM 思路有趣
+
+---
+
+## 不用看（约 38 万行 2.x 遗产）
+
+| 目录 | 行数 | 不看的原因 |
+|------|------|-----------|
+| `gemm/threadblock/` | 大头 | 2.x 的 `DefaultMmaCore`、tile iterator，全部被 collective 替代 |
+| `gemm/warp/` | — | 2.x 的 `WarpMma`，被 TiledMma 替代 |
+| `gemm/device/` 的 2.x 部分 | — | 被 `GemmUniversalAdapter` 统一 |
+| `transform/threadblock/` | — | 2.x 的数据搬运，被 TMA 替代 |
+| `epilogue/threadblock/` | — | 2.x epilogue，被 collective epilogue 替代 |
+| `conv/` | — | 卷积，当前目标不涉及（如果将来要做 fused conv，再回来） |
+| `reduction/` | — | 老 reduction，3.x 用 epilogue 表达 |
+
+如何快速识别 2.x vs 3.x 文件：
+- 文件名带 `sm90_` / `sm100_` 前缀 → 大概率 3.x
+- 头文件用 `cute::` 类型 → 3.x
+- 使用 `Mma_*::Shape` / `WarpShape` / `InstructionShape` 三层 shape 模板 → 2.x
+- 路径里有 `threadblock/` / `warp/` 的目录 → 2.x
+
+---
+
+## 阅读节奏建议
+
+- **不要一开始就读 5000 行**。每个文件在到对应周时再读，否则没上下文，看了也白看
+- 读 `sm90_pipeline.hpp` 之前，先把 `media/docs/cpp/pipeline.md` 读一遍
+- 读 `*_warpspecialized*.hpp` 时**对着 example 48 一起看**，光看 .hpp 容易迷路
+- 每读一个文件，在 [PROGRESS.md](PROGRESS.md) 的踩坑记录里写一句"我以为 X 是 Y，实际是 Z"，强化记忆

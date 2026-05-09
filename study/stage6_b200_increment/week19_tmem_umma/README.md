@@ -8,6 +8,9 @@
 - 跑通一个 minimal SM100 MMA example
 
 ## 读
+
+> 本周开始读 SM100 那部分 cutlass/；详见 [cutlass_reading_strategy.md §1（SM100 增量）](../../cutlass_reading_strategy.md#1-pipeline-抽象--includecutlasspipeline)。
+
 - `include/cute/arch/tmem_allocator_sm100.hpp` — TMEM 分配
 - `include/cute/arch/mma_sm100_umma.hpp` — UMMA PTX 包装
 - `include/cute/atom/mma_traits_sm100*.hpp` — UMMA atom traits

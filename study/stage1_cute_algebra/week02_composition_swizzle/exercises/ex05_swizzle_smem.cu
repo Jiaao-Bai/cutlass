@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Ex05 — Swizzle smem demo: 32x32 fp32 transpose, with vs without Swizzle<3,2,3>.
+ * Ex05 — Swizzle smem demo: 32x32 fp32 transpose, with vs without Swizzle<5,2,5>.
  *
  * 流程：
  *   1) 单 block 1024 线程
@@ -7,8 +7,13 @@
  *   3) syncthreads
  *   4) 每个线程从 smem[tid%32, tid/32] 读（**列优先转置**）
  *      - plain layout：32 个线程 lock-step 命中同一个 bank → 32-way conflict
- *      - 包了 Swizzle<3,2,3>：col 低 3 bit XOR row 低 3 bit → 0 conflict
- *   5) reduce 一下避免 dead-code elimination
+ *      - 包了 Swizzle<5,2,5>：row 5 bit 完整 XOR col 5 bit → 0 conflict
+ *
+ * 注意 swizzle 参数选取：B+M = log2(bank-row 字节数) = log2(128) = 7。
+ *   - 这里每行 32 fp32 = 128B = 32 banks，要让一行内 32 个 chunk 全打散到 32 banks
+ *     需要 B=5（覆盖 5 bit bank index），M=2（fp32 = 4B），S=5（距离 row 字段）。
+ *   - paper（ex05_swizzle_paper.md）用 Swizzle<3,2,3> 是配 8x8 fp32 tile（每行 32B）；
+ *     原理相同（B+M = log2(行字节数)），只是颗粒小。
  *
  * 验证：
  *   ./study_stage1_w02_ex05_swizzle_smem
@@ -46,17 +51,18 @@ __global__ void kernel_no_swizzle(float const* in, float* out) {
   out[tid] = v;
 }
 
-// ----- swizzled smem layout: same logical layout wrapped in Swizzle<3,2,3>
+// ----- swizzled smem layout: same logical layout wrapped in Swizzle<5,2,5>
 __global__ void kernel_swizzled(float const* in, float* out) {
   __shared__ float smem[TILE * TILE];
 
-  // Swizzle<B=3, M=2, S=3>:
-  //   M=2: 4-byte (fp32) atom
-  //   S=3: shift amount (skip 3 bits = col index region)
-  //   B=3: 3 bits XOR'd
+  // Swizzle<B=5, M=2, S=5>:
+  //   M=2: 4-byte (fp32) atom，低 2 bit 是 byte-in-element，不动
+  //   B=5: 5 bit XOR，覆盖完整 5-bit bank index（32 banks = 2^5）
+  //   S=5: source 段距 target 段 5 bit，正好让 row[4:0] (bit 7..11) XOR 到
+  //        col[4:0] (bit 2..6)，bank = (col ^ row) % 32 完全打散
   auto raw = make_layout(Shape<Int<TILE>, Int<TILE>>{},
                          Stride<Int<TILE>, _1>{});
-  auto sw_layout = composition(Swizzle<3, 2, 3>{}, raw);
+  auto sw_layout = composition(Swizzle<5, 2, 5>{}, raw);
   Tensor S = make_tensor(make_smem_ptr(smem), sw_layout);
 
   int tid = threadIdx.x;

@@ -41,6 +41,6 @@ make study_stage1_w02_ex06_hgemm_naive -j
 ## 自检
 1. `composition(Layout<_8, _1>, Layout<_4, _2>)` 等于？画出几何形状。
 2. `complement(Layout<_4, _3>, _12)` 等于？为什么需要 cosize 参数？
-3. `Swizzle<3,4,3>` 在 128B-line / 4-byte-element 的 smem 上交换了哪些 bit？
+3. `Swizzle<3,4,3>` 在每行 128B 的 smem 上交换了哪些 bit？为什么这个公式跟元素类型（fp32/fp16/fp8）无关？
 4. WGMMA 要求的 smem 是 16-byte 对齐还是 128-byte 对齐？跟 swizzle 参数怎么关联？
 5. 当前 `ex06_hgemm_naive` 的算术强度大约多少？memory bound 还是 compute bound？为什么慢？

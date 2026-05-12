@@ -6,9 +6,9 @@
 
 | Stage | 周 | 状态 | 主要产出 | 完成日期 |
 |-------|----|----|---------|---------|
-| 1 | W1 — Layout basics | 🔵 in-progress | `ex01_crd2idx_paper.md` + `ex01_verify.cu` + `ex02_layout_print.cu` + `ex03_coalesce.cu` 已搭骨架 | |
-| 1 | W2 — Composition + Swizzle | ☑ | `ex06_hgemm_naive.cu`（FP16 单线程一元素，CPU ref check 通过） | |
-| 1 | W3 — TiledMMA | ☐ | | |
+| 1 | W1 — Layout basics | ☑ | `ex01_crd2idx_paper.md` + `ex01_verify.cu` + `ex02_layout_print.cu` + `ex03_coalesce.cu` + 5 道自检 | 2026-05-12 |
+| 1 | W2 — Composition + Swizzle | ☑ | `ex04_composition_paper.md` + `ex04_verify.cu` + `ex05_swizzle_paper.md` + `ex06_hgemm_naive.cu` + 4 道自检（Q3 重写后） | 2026-05-12 |
+| 1 | W3 — TiledMMA | 🔵 in-progress | | |
 | 1 | W4 — TiledCopy | ☐ | | |
 | 1 | **CHECKPOINT** | ☐ | sgemm_sm80 变体 + 5 道口答 | |
 | 2 | W5 — WGMMA | ☐ | | |

@@ -6,25 +6,32 @@
 
 ## 速记
 
+源码（`include/cute/swizzle.hpp:67-78`）：
+
 ```cpp
-Swizzle<B, M, S>::operator()(offset)
-  = offset XOR ((offset >> S) & ((1<<B) - 1)) << M
+yyy_msk = ((1 << B) - 1) << (M + S);                  // 源 bit 的位置（假设 S >= 0）
+apply(offset) = offset XOR ((offset & yyy_msk) >> S); // 把源段位 shift 下来 XOR 到目标段位
 ```
 
-**直觉**：
-- `M` = 一个"原子单位"占多少 bit（例如 fp32 = 4B = 2 bit、128B = 7 bit）
-- `B` = 多少 bit 参与 swizzle（XOR 几位）
-- `S` = "外圈" bit 距 "内圈"（被 XOR 的）有多少位 shift
+等价的"位段描述"：
+- **target bits**（被 XOR 修改的位）：`[M, M+B)`
+- **source bits**（参与 XOR 的位）：`[M+S, M+S+B)`
+- 两段距离 = `S` bit
 
-效果是把高位的 `B` 个 bit XOR 到 `[M, M+B)` 这段位置上 —— 让"列号"打乱"行号低位"，使同一个 bank 不会被同 row 不同 col 命中。
+**直觉**：
+- `M` = 一个"原子单位"占多少 bit（例如 fp32 = 4B = 2 bit、128B = 7 bit）。下面 `M` bit 是不可分割的访问颗粒，绝不动。
+- `B` = 多少 bit 参与 swizzle（XOR 几位）
+- `S` = 源段距目标段的位移
+
+效果是把"上层" `B` 个 bit XOR 到 `[M, M+B)` 这段——让行号低位"打乱"列号低位，让同一个 bank 不再被"同 col 不同 row"全部命中。
 
 参数三元组到 byte 的速记表（fp32 = 4B/elem）：
 
 | Swizzle | 含义 |
 |---------|------|
-| `<3, 2, 3>` | 8x8 fp32 tile：3 bit 列 XOR 到 3 bit 行（消 32-way smem 转置 conflict） |
-| `<2, 4, 3>` | 16-byte 原子（如 ldmatrix.x4 = 16B），3 bit 行 swizzle |
-| `<3, 4, 3>` | 16-byte 原子，128B-line / fp16 用，最常见的 WGMMA smem swizzle |
+| `<3, 2, 3>` | 8x8 fp32 tile（每行 32B）：row 低 3 bit XOR 到 col 低 3 bit，消转置访问的 8-way bank conflict |
+| `<2, 4, 3>` | 16-byte 原子（如 `ldmatrix.x4` = 16B），4x4 tile 内 2 bit swizzle |
+| `<3, 4, 3>` | 16-byte 原子，128B-line（8 chunks）/ 8 行 tile，最常见的 WGMMA smem swizzle |
 
 ---
 
@@ -32,36 +39,53 @@ Swizzle<B, M, S>::operator()(offset)
 
 ### Q1. 解 `Swizzle<3, 2, 3>` 在 fp32 smem 上的位置
 
-smem 32x32 fp32（即 32x128B = 32 行 × 32 bank）。元素 `[row, col]` 的线性 byte offset = `row * 128 + col * 4`。
+smem 8x8 fp32（即 8x32B = 8 行 × 8 fp32/行）。元素 `[row, col]` 的线性 byte offset = `row * 32 + col * 4`。
 
-bit 布局（offset 共 12 bit）：
+bit 布局（offset 共 8 bit）：
 ```
-bit 11..7 = row[4:0]      // 5 bit
-bit  6..2 = col[4:0]      // 5 bit
-bit  1..0 = byte_in_elem  // M=2
+bit 7..5 = row[2:0]      // 3 bit
+bit 4..2 = col[2:0]      // 3 bit
+bit 1..0 = byte_in_elem  // M=2
 ```
 
-`Swizzle<3, 2, 3>` 取 `(offset >> 3) & 0b111` = `bit[5:3]` = **col 的低 3 bit**，XOR 到 `bit[4:2]` = ?
+`Swizzle<3, 2, 3>` 的 source = `[M+S, M+S+B)` = bits **5..7**，target = `[M, M+B)` = bits **2..4**。
+- source = `bit[7:5]` = **row 的低 3 bit**
+- target = `bit[4:2]` = **col 的低 3 bit**
 
-**你的答案**：被 XOR 的目标 bit 是 offset 的第 ___ 到第 ___ 位，对应物理意义是：col 的低 3 bit 与 ___ 的低 3 bit 异或。
+**你的答案**：被 XOR 的目标 bit 是 offset 的第 **2** 到第 **4** 位（即 col[2:0]），对应物理意义是：**row 的低 3 bit 与 col 的低 3 bit 异或**——新地址的 bank 编号 ≈ `(row ^ col) % 32`。
 
 ---
 
 ### Q2. 列出 `Swizzle<3, 2, 3>(addr)` 的具体值
 
-填表（row, col 都是 0..7 演示，足够覆盖 swizzle 一个周期）：
+XOR mask = `((offset >> 5) & 0b111) << 2` = `row[2:0] << 2`。
+
+填表（row, col 都是 0..7 演示，足够覆盖 swizzle 一个周期；row stride = 32B）：
 
 | row | col | raw offset (bytes) | XOR mask | swizzled offset |
 |-----|-----|---------------------|----------|-----------------|
-| 0 | 0 | 0 | 0 | 0 |
-| 0 | 1 | 4 | ? | ? |
-| 0 | 2 | 8 | ? | ? |
-| 1 | 0 | 128 | ? | ? |
-| 1 | 1 | 132 | ? | ? |
-| 2 | 0 | 256 | ? | ? |
-| 7 | 7 | 924 | ? | ? |
+| 0 | 0 | 0   | 0  | 0   |
+| 0 | 1 | 4   | 0  | 4   |
+| 0 | 2 | 8   | 0  | 8   |
+| 1 | 0 | 32  | 4  | 36  |
+| 1 | 1 | 36  | 4  | 32  |
+| 2 | 0 | 64  | 8  | 72  |
+| 7 | 7 | 252 | 28 | 224 |
 
-**关键观察**：在原始 layout 下，`[row=tid, col=0]` 都映射到 bank 0（32-way conflict）。swizzle 之后呢？写出 row 0..7 下 col=0 的 bank id（bank id = `(swizzled_offset >> 2) & 0x1f`）。
+**关键观察**：在原始 layout 下，`[row=tid, col=0]` 全部映射到 bank 0（8-way conflict）。swizzle 之后 col=0 的 bank id 序列（bank id = `(swizzled_offset >> 2) & 0x1f`）：
+
+| row | raw | swizzled | bank |
+|-----|-----|----------|------|
+| 0 | 0   | 0   | 0  |
+| 1 | 32  | 36  | 9  |
+| 2 | 64  | 72  | 18 |
+| 3 | 96  | 108 | 27 |
+| 4 | 128 | 144 | 4  |
+| 5 | 160 | 180 | 13 |
+| 6 | 192 | 216 | 22 |
+| 7 | 224 | 252 | 31 |
+
+8 行 → 8 个不同 bank → **0 conflict** ✓
 
 ---
 

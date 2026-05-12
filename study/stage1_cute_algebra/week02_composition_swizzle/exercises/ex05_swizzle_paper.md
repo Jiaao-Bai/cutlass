@@ -92,23 +92,17 @@ XOR mask = `((offset >> 5) & 0b111) << 2` = `row[2:0] << 2`。
 
 ---
 
-### Q3. WGMMA 用的 `Swizzle<3, 4, 3>`
+### Q3. 真实 WGMMA 场景的 swizzle
 
-WGMMA 操作数从 smem 装载到 register 时，每个 warp lane 装 16B。所以 `M = 4`（16B 原子）。
-对 64x64 fp16 tile（128B-line × 64 行 = 8KB），fp16 stride 1 的连续 layout：
-- `bit[3:0]` = byte_in_16B
-- `bit[6:4]` = "16B chunk in line" 索引
-- `bit[12:7]` = row[5:0]（64 行）
+WGMMA 用 `Swizzle<3, 4, 3>`（SW128）：M=4（16B 颗粒，`LDS.128`），B=3（8 chunks/row），S=3（row 字段对齐 bit 7）。bit 公式跟 Q1/Q2 同理，把"row[2:0] XOR chunk[2:0]"放到 16B-chunk 颗粒上做。
 
-`Swizzle<3, 4, 3>` 取 `(offset >> 7) & 0x7` = row 低 3 bit，XOR 到 bit[6:4] = "16B chunk index"。
+**为什么必须配 swizzle**：WGMMA mainloop 里 SMEM 既要被"行访问"（warp 沿 K 方向连续读 A operand）又要被"列访问 / 转置访问"（epilogue 把 D 矩阵存回 SMEM 后转置着 load 给下一阶段）。行访问天然 0 conflict，但**转置访问不 swizzle 就 32-way bank conflict**——swizzle 把列方向访问的地址打散到不同 bank 才让两种模式都 0 conflict。
 
-**问**：WGMMA 64x16 加载时，128 个线程同步从同一 row 读 8 个 16B chunk。在这种 swizzle 下，第 `tid` 个线程读 row `tid/8`、chunk `tid%8`。
-- 没 swizzle：所有线程读 row 0 chunk 0..7，命中 8 个 bank pair → 0 conflict？不，8 chunks × 16B = 128B 分布在所有 32 banks，0 conflict。
-- 有 swizzle：row r、chunk c 的实际地址是 `c XOR (r&7)`。当所有 lane 读同一 row 不同 chunk，一行内还是 0..7 的排列（被 row 重排），还是 0 conflict ✓
-
-那 swizzle 是为了**什么场景**消 conflict？答：**MMA store 后再 load** 的转置访问，即 `r XOR c` 模式（不同 row 不同 chunk）。具体写出 lane 0..31 转置访问时的 chunk id 序列，证明它仍然是 0..31 的全排列 → 0 conflict。
-
-**你的回答**：用一两句话解释为什么 WGMMA 必须配 swizzle smem。
+> **本题不展开手算**——swizzle 的真正发力场景跟具体 kernel 强绑定：
+> - **W9** 写 Hopper WarpSpec GEMM 时，会配合 `cute::GMMA::Layout_K_SW128_Atom` 实际跑 ncu，看带/不带 swizzle 的 `l1tex__data_bank_conflicts` 差几个数量级
+> - **W12** 写 FlashAttention 时再处理 Q/K/V 的 SMEM swizzle 与 transpose 路径
+>
+> 这里只需要建立直觉：**M 决定颗粒、B 决定打散维度、S 决定 source 字段位置**。具体 bank 表手算放到能跑 kernel 对照的时候再做。
 
 ---
 

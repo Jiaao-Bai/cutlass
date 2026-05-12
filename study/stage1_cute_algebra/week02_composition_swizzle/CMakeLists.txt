@@ -4,11 +4,6 @@ cutlass_study_add_executable(
 )
 
 cutlass_study_add_executable(
-  study_stage1_w02_ex05_swizzle_smem
-  exercises/ex05_swizzle_smem.cu
-)
-
-cutlass_study_add_executable(
   study_stage1_w02_ex06_hgemm_naive
   exercises/ex06_hgemm_naive.cu
 )

@@ -24,8 +24,8 @@
 - `media/docs/cpp/cute/02_layout_algebra.md` — 代数文档
 
 ## 写
-- `exercises/ex04_composition.cu` — 给 4 对 (lhs, rhs)，预测 `composition` 结果再跑
-- `exercises/ex05_swizzle_smem.cu` — 在 smem 上对比有无 swizzle 的 bank conflict 数（用 ncu `l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld`）
+- `exercises/ex04_composition.cu` + `ex04_composition_paper.md` — 预测 `composition` 结果再跑
+- `exercises/ex05_swizzle_paper.md` — Swizzle bit math 手算（ncu 对照延迟到 W9 配 WGMMA 实战）
 - `exercises/ex06_hgemm_naive.cu` — **已完成**：纯 CuTe FP16 GEMM，单线程一元素，CPU ref check
 
 ## 跑

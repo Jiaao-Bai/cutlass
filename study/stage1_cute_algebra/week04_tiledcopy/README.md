@@ -41,6 +41,18 @@ cp.async PTX → Copy_Traits 描述指令 → Copy_Atom 包成 struct →
 TiledCopy 拼大块 → ThrCopy 切给 thread → 在 mainloop 里用
 ```
 
+## 实战例子（**W4 主例 + CHECKPOINT base**）
+
+| 例子 | 用到的 | 看点 |
+|------|--------|------|
+| `examples/cute/tutorial/sgemm_sm80.cu` | TiledMMA + **TiledCopy（cp.async）+ double-buffer pipeline** | **W4 主例**。重点：行 369-376 `make_tiled_copy` 构造 + mainloop 里 prologue/`cp_async_fence`/`cp_async_wait<PIPE-2>` 的双缓冲编排。**这是 CHECKPOINT `ex_sgemm_sm80_variant` 的直接基础。** |
+
+回顾 W3 已读过的 `sgemm_2.cu` 也可以再扫一遍——它用同步 cp.async，作为"不带 pipeline 的版本"对照看出双缓冲省的是什么。
+
+```bash
+make sgemm_sm80 -j && ./examples/cute/tutorial/sgemm_sm80 4096 4096 4096
+```
+
 ## 写
 - `exercises/ex09_async_copy.cu` — 用 `cute::copy` + `SM80_CP_ASYNC_CACHEGLOBAL` 做 G→S 拷贝，对比同步 `LDG.E` 路径
 - `exercises/ex10_bank_conflict.cu` — 写一个会 bank conflict 的 smem layout，再用 swizzle 修掉，记 ncu 数据

@@ -7,16 +7,25 @@
 - 看懂 UMMA 与 WGMMA 的核心差异
 - 跑通一个 minimal SM100 MMA example
 
-## 读
+## 读（**自下而上**：PTX → Traits → 分配器 → 实战）
 
 > 本周开始读 SM100 那部分 cutlass/；详见 [cutlass_reading_strategy.md §1（SM100 增量）](../../cutlass_reading_strategy.md#1-pipeline-抽象--includecutlasspipeline)。
 
-- `include/cute/arch/tmem_allocator_sm100.hpp` — TMEM 分配
-- `include/cute/arch/mma_sm100_umma.hpp` — UMMA PTX 包装
-- `include/cute/atom/mma_traits_sm100*.hpp` — UMMA atom traits
-- `include/cute/atom/copy_traits_sm100_tmem.hpp` — TMEM ↔ RMEM 拷贝
-- `examples/cute/tutorial/blackwell/`（如果有）
-- `examples/python/CuTeDSL/blackwell/dense_gemm.py` — 可执行参考
+1. `include/cute/arch/mma_sm100_umma.hpp` — **UMMA PTX wrappers**：`SM100_MMA_F16BF16_SS / TS / TT` 等，对应 `tcgen05.mma` 系列指令。从这里看 UMMA 的硬件接口。
+2. `include/cute/arch/copy_sm100.hpp:618+` — **TMEM ↔ RMEM PTX wrappers**：`SM100_TMEM_LOAD_*` / `SM100_TMEM_STORE_*`，对应 `tcgen05.ld/st` 指令。
+3. `include/cute/atom/mma_traits_sm100.hpp` — **UMMA atom traits**：Shape_MNK / ThrID / ALayout / BLayout / CLayout。注意文件名是 `mma_traits_sm100.hpp`（不是 `_umma` 后缀）。
+4. `include/cute/atom/copy_traits_sm100.hpp` — TMEM ↔ RMEM 的 traits（也含 TMA）。
+5. `include/cute/arch/tmem_allocator_sm100.hpp` — **TMEM 分配器**：`tcgen05.alloc / dealloc` 的 C++ 包装，知道了底下指令再来看 alloc API 更直观。
+6. `examples/python/CuTeDSL/blackwell/dense_gemm.py` — 可执行参考（Python DSL，跑得通）。
+7. `examples/cute/tutorial/blackwell/`（如果有）— C++ tutorial。
+
+**心智模型**（跟 W3/W4 一致的 PTX → Traits → 抽象层 → 实战）：
+```
+tcgen05.mma / tcgen05.ld / tcgen05.alloc 三套 PTX
+  → mma_traits_sm100 + copy_traits_sm100 把它们包成 atom
+  → tmem_allocator 管 TMEM 段生命周期
+  → 上层 collective / kernel 用 atom 跑 GEMM
+```
 
 ## TMEM vs SMEM vs RMEM
 

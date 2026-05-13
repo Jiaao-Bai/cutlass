@@ -48,6 +48,22 @@
 ThrMMA 切给 thread → cute::gemm 编排 → serpentine 调寄存器
 ```
 
+## 实战例子（**读源码前后都建议跑一遍**）
+
+| 例子 | 用到的 | 看点 |
+|------|--------|------|
+| `examples/cute/tutorial/sgemm_1.cu` | `local_partition` + SMEM + 同步 `cp.async` | 最简完整 GEMM。**不**用 TiledMMA，用更原始的 `local_partition` 切块 + scalar `cute::gemm`。先看这个建立"完整 kernel 长啥样"的直觉。 |
+| `examples/cute/tutorial/sgemm_2.cu` | **TiledMMA + TiledCopy**（同步 cp.async）| **W3 主例**。用 TiledMMA 替换 sgemm_1 的 local_partition，看 `partition_A/B/C` 怎么用。 |
+| `examples/cute/tutorial/sgemm_sm70.cu` | TiledMMA + Volta tensor core atom | 可选。Volta 的 HMMA atom（不是 SM80 mma_sync），看 TiledMMA 跨架构怎么换 atom 就好。 |
+
+```bash
+# 跑：
+make sgemm_1 -j && ./examples/cute/tutorial/sgemm_1 4096 4096 4096
+make sgemm_2 -j && ./examples/cute/tutorial/sgemm_2 4096 4096 4096
+```
+
+`sgemm_sm80.cu` 放到 W4——它带 double-buffer pipeline，跟 W4 的 `cp.async` 异步部分配套。
+
 ## 写
 - `exercises/ex07_tiled_mma_layout.cu` — 给定 `MMA_Atom` 和 `TiledMMA`，让 thread 0 / 32 / 127 各自打印 partition 出来的 fragment shape
 - `exercises/ex08_serpentine_count.cu` — 实测序列遍历 vs serpentine 遍历的寄存器使用差异（`-Xptxas=-v`）

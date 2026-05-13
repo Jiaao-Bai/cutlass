@@ -8,36 +8,45 @@
 - 能解释 `cute::gemm` 5 层 dispatch 的每一层意义
 - 能解释 serpentine 遍历为什么省寄存器
 
-## 读
-- `include/cute/atom/mma_atom.hpp:42-200` — `MMA_Atom` 三层包装
-  ```
-  MMAOperation（PTX 裸指令，如 SM80_16x8x16_F16F16F16F16_TN）
-      ↓ MMA_Traits<Op>    : Shape_MNK / ThrID / ALayout / BLayout / CLayout
-      ↓ MMA_Atom<Traits>  : call() + make_fragment_A/B/C()
-  ```
-  - `ALayout`（domain = (ThrID, ValIdx)，codomain = A 的元素索引）= "这条指令的 A 矩阵，哪些线程负责哪些元素"，硬件指令到 CuTe 抽象的桥
-- `include/cute/atom/mma_atom.hpp:252-353` — `TiledMMA::thrfrg_C/A/B`
-  4 步 Layout 变换把 `(M,N)` tensor 变成 `((ThrV,(ThrM,ThrN)),(FrgV,(RestM,RestN)))`：
-  ```cpp
-  logical_divide(ctensor, t_tile)      // (PermM,PermN)               — permutation
-  zipped_divide(t_tensor, c_tile)      // ((AtomM,AtomN),(RestM,RestN)) — atom 切块
-  c_tensor.compose(AtomLayoutC_TV{})   // ((ThrV,FrgV),(RestM,RestN))  — TV 变换
-  zipped_divide(tv_tensor, thr_tile)   // ((ThrV,(ThrM,ThrN)),(FrgV,..)) — 线程分组
-  ```
-- `include/cute/atom/mma_atom.hpp:460-523` — `ThrMMA::partition_C/A/B`
-  - 对 `thrfrg_C` 结果按当前线程坐标切片
-- `include/cute/algorithm/gemm.hpp:100-500` — 5 层 dispatch
-  ```
-  Dispatch 1: (V) × (V) → (V)            标量乘加
-  Dispatch 2: (M) × (N) → (M,N)            外积
-  Dispatch 3: (M,K) × (N,K) → (M,N)        矩阵乘 → 升维到 5
-  Dispatch 4: (V,M) × (V,N) → (V,M,N)      批量外积，寄存器复用
-  Dispatch 5: (V,M,K) × (V,N,K) → (V,M,N)  最终展开
-  ```
-- `include/cute/algorithm/gemm.hpp:260-390` — Dispatch 4 的 **serpentine 遍历**
-  ```cpp
-  int ns = (m & 1) ? N-1-n : n;  // 奇数行反向，最大化寄存器复用
-  ```
+## 读（**自下而上**：PTX → Traits → Atom → Tiled → Thr → 算法）
+
+1. `include/cute/arch/mma_sm80.hpp:92-120` — **具体 PTX wrapper** `SM80_16x8x16_F16F16F16F16_TN`，就是 `mma.sync.aligned.m16n8k16.row.col.f16` 的 inline asm。从这里建立"硬件指令到底是啥"的直觉。
+2. `include/cute/atom/mma_traits_sm80.hpp:77-92` — **`MMA_Traits<SM80_16x8x16_F16F16F16F16_TN>`**：
+   ```
+   Shape_MNK = (_16, _8, _16)
+   ThrID     = _32                              ← 一个 warp
+   ALayout   = ((_4,_8),(_2,_2,_2)):((_32,_1),(_16,_8,_128))   ← (T,V) → A 元素索引
+   BLayout   = ((_4,_8),(_2,_2)):((_16,_1),(_8,_64))
+   CLayout   = SM80_16x8_Row
+   ```
+   `ALayout` 第二个 mode 的 size = 2×2×2 = **8** → 单 thread 持 8 个 A 元素。
+3. `include/cute/atom/mma_atom.hpp:42-200` — **`MMA_Atom<Traits>`** wrapper：用 Traits 字段提供 `call()` + `make_fragment_A/B/C()`。本质就是把 Traits 包成 C++ struct 接口。
+4. `include/cute/atom/mma_atom.hpp:252-353` — **`TiledMMA::thrfrg_C/A/B`**：4 步把 atom 平铺成更大 tile：
+   ```cpp
+   logical_divide(ctensor, t_tile)      // (PermM,PermN)               — permutation
+   zipped_divide(t_tensor, c_tile)      // ((AtomM,AtomN),(RestM,RestN)) — atom 切块
+   c_tensor.compose(AtomLayoutC_TV{})   // ((ThrV,FrgV),(RestM,RestN))  — TV 变换
+   zipped_divide(tv_tensor, thr_tile)   // ((ThrV,(ThrM,ThrN)),(FrgV,..)) — 线程分组
+   ```
+5. `include/cute/atom/mma_atom.hpp:460-523` — **`ThrMMA::partition_C/A/B`**：从 TiledMMA 按 thread idx 切片，得到当前 thread 的 fragment。
+6. `include/cute/algorithm/gemm.hpp:100-500` — **`cute::gemm` 5 层 dispatch**，编排 atom call：
+   ```
+   Dispatch 1: (V) × (V) → (V)            标量乘加
+   Dispatch 2: (M) × (N) → (M,N)            外积
+   Dispatch 3: (M,K) × (N,K) → (M,N)        矩阵乘 → 升维到 5
+   Dispatch 4: (V,M) × (V,N) → (V,M,N)      批量外积，寄存器复用
+   Dispatch 5: (V,M,K) × (V,N,K) → (V,M,N)  最终展开
+   ```
+7. `include/cute/algorithm/gemm.hpp:260-390` — Dispatch 4 的 **serpentine 遍历**优化：
+   ```cpp
+   int ns = (m & 1) ? N-1-n : n;  // 奇数行反向，最大化寄存器复用
+   ```
+
+**心智模型**：
+```
+硬件 PTX → Traits 描述硬件 → Atom 包成 struct → TiledMMA 拼大块 →
+ThrMMA 切给 thread → cute::gemm 编排 → serpentine 调寄存器
+```
 
 ## 写
 - `exercises/ex07_tiled_mma_layout.cu` — 给定 `MMA_Atom` 和 `TiledMMA`，让 thread 0 / 32 / 127 各自打印 partition 出来的 fragment shape

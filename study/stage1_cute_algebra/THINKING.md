@@ -144,29 +144,33 @@ BLAS↔CuTe 对照表（原文 line 107-112，背下来）：
 
 `TiledCopy::partition_S/D` 内部本质就是 `outer_partition` + 自动算的 thr_layout（来自 Copy_Atom 硬件要求）。`TiledMMA::partition_A/B/C` 在此基础上还套 (T, V) → element 的 ALayout 硬件接线。
 
-### O11. Per-mode complement vs whole-tile complement
+### O11. Per-mode complement vs whole-layout complement——**不该直接对比**
 
-zipped_divide 内部用 per-mode complement（按维度独立调），跟直接调 whole-tile complement **L 紧凑时等价**（image 集合一致），**L 非紧凑时不等价**（只有 whole-tile 能看跨 mode gap）。
+`zipped_divide` 用 **per-mode complement**：tuple tiler 拆开，每个 mode 在**坐标空间**做 1D complement（cotarget = 该 mode size）。
+直接调 `complement(layout, M)` 是 **whole-layout complement**：单个多维 layout 在**地址空间**做 complement（cotarget = 总尺寸）。
 
-**具体例子**（L=(6,8):(8,1) 紧凑，tile=((2:1),(4:1))）：
+**两边输入根本不是同一类对象**——前者吃 tuple of 1D，后者吃单个多维 layout。强行对比要做空间转换，即使能凑出"image 集合相同"（紧凑 L 时），也不等于它们可互换。
 
-| 路径 | 计算 | 结果 |
-|------|------|------|
-| Per-mode | `complement(2:1, 6) = 3:2`<br>`complement(4:1, 8) = 2:4` | 经 composition 合成 zipped_divide rest = `(3,2):(16,4)` |
-| Whole-tile | `complement((2,4):(8,1), 48)` | `(2,3):(4,16)` |
+**正解**：它们是**不同 API 解决不同问题**：
+- per-mode：tuple tiler API 配合 logical_divide 的 `((tile),(rest))` 嵌套结构，**为 tile-and-grid 切分服务**
+- whole-layout：服务于代数原语场景（`logical_product` 复制块、`right_inverse` 求逆、填补非紧凑 layout 的洞、扩展 codomain）
 
-两者 image 集合都是 `{0, 4, 16, 20, 32, 36}`，只是 shape 嵌套顺序换了。
+不要试图把它们当成"同一操作的两种输入格式"互相替换。
 
-**结构差异**：
-- Per-mode：N 次调用，每次输入 1D，cotarget = 该 mode size（坐标空间），输出 N 个独立 1D layout
-- Whole-tile：1 次调用，输入多维 layout，cotarget = L 的 cosize（地址空间），输出单个多维 layout
+### O19. complement 要求输入是单射 layout
 
-**zipped_divide 选 per-mode 的理由**：
-1. tuple tiler API 自然按 mode 拆
-2. logical_divide 输出 `((BLK_M, m), (BLK_N, n))` 需要每 mode 独立的 tile+rest 嵌套
-3. 编译期优化：小 1D 静态 shape 比 rank-N 静态 shape 快
+源码 `layout.hpp:1203`：
+```cpp
+auto new_shape = min_stride / get<i>(result_stride);
+static_assert(not is_constant<0, decltype(new_shape)>::value,
+              "Non-injective Layout detected in complement.");
+```
 
-**L 非紧凑时**（如 L=(4,4):(1,8) 有 gap），per-mode 看不见跨 mode 的 gap，只有 whole-tile 能整体填洞。后者用于 `logical_product`、`right_inverse`、扩展 codomain 等代数原语场景。
+iteration 中 `new_shape = min_stride / 前一累积 stride`。如果输入 layout 多个 mode stride 撞车（不同坐标命中同一地址，即非单射），new_shape 算出 0，**编译失败**。
+
+例：`(2,2):(1,1)` —— `(0,0)→0, (0,1)→1, (1,0)→1, (1,1)→2`，两个坐标命中 1，非单射 → assert fire。
+
+源码先 `filter(layout)` 去 stride-0 和 size-1 modes，但**剩下的部分必须单射**。语义合理性：complement 是"填补 L 没 hit 的地址"，L 内部 overlap 时"hit 哪些"和"hit 多少次"是两个概念，"剩下"无法良定义。
 
 ### O12. MMA atom 内的 ALayout/BLayout/CLayout 是硬件接线图
 
@@ -348,8 +352,13 @@ local_partition(tensor, thr_layout, thr_idx) {
 
 ### E13. Per-mode vs whole-tile complement 第一次给的对比例子无意义
 - **错**：用户问"per-mode complement 跟直接调 complement 结果差别"，agent 第一次给的例子用 `complement(L, cosize(L))` —— L 紧凑时这是 trivial `_1:_0`，根本对比不出来
-- **正**：用户指出后改用 `complement(tile, cosize(L))` —— 把 tile 当成 L 地址空间里的一坨 layout 调 complement，得到 `(2,3):(4,16)`，跟 per-mode 经 composition 出来的 `(3,2):(16,4)` image 相同（只是 shape 转置），形成有效对比
-- **教训**：对比两个 API 时，参数选择要让**两边都返回有意义的结果**，否则只是 "API A 给 trivial，API B 给非 trivial" 的伪对比
+- **正**：用户指出后改用 `complement(tile, cosize(L))` —— 把 tile 当成 L 地址空间里的一坨 layout 调 complement，得到 `(2,3):(4,16)`
+- **教训**：对比两个 API 时，参数选择要让**两边都返回有意义的结果**
+
+### E14. 然后又把 tuple tiler 偷换成 physical tile
+- **错**：上一轮修正后，agent 在 O11 里把 "tuple tiler `((2:1),(4:1))`" 跟 "physical tile `(2,4):(8,1)`" 当成同一个对象做"per-mode vs whole-tile complement"对比。两者其实是**不同空间不同对象**——前者在坐标空间是 tuple of 1D，后者在 L 地址空间是单个 rank-2 layout，需要 composition with L 才能桥接
+- **正**：per-mode 跟 whole-layout complement **本来就不应该做对比**——输入对象类别不同、服务的问题不同。O11 已重写承认这点
+- **教训**：用户最终说"按 mode 和不按 mode 就没法比较"是对的。不是所有"看起来类似的 API"都能转换成对比——有时它们就是不同 API 解决不同问题
 
 ---
 

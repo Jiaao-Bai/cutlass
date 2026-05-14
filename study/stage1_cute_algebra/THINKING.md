@@ -81,6 +81,206 @@ BLAS↔CuTe 对照表（原文 line 107-112，背下来）：
 
 ---
 
+## 二.A、W3 学习中沉淀的概念笔记（O10-O18）
+
+这些是 W3 阶段深挖出的概念整理，供下个 agent / 用户回顾时直接引用。
+
+### O10. Divide 家族 + local_tile / local_partition 大图
+
+**核心心智模型**：所有 divide / partition 函数都站在 `zipped_divide` 这一个节点之上，只是切刀方向或形状嵌套不同。
+
+```
+       composition + complement     (两个底层原语)
+                  │
+                  ▼
+           logical_divide            按"原维度"嵌套
+        ((BLK_M, m), (BLK_N, n))
+                  │
+                  │  tile_unzip 重组：按"角色"分组
+                  ▼
+           zipped_divide             ◄═══ 核心节点
+        ((BLK_M, BLK_N), (m, n))
+                  │
+       ┌──────────┼──────────────────────┐
+       │          │                      │
+   形状变体     切 tile 维             切 rest 维
+       │          ▼                      ▼
+       │   outer_partition       inner_partition
+       │   保留 rest             保留 tile
+       │          │                      │
+       │          ▼                      ▼
+       │   local_partition       local_tile
+       │   (thr_layout, thr_idx) (tile_shape, coord)
+       │
+       ├── tiled_divide  ((BLK), m, n)
+       └── flat_divide   (BLK_M, BLK_N, m, n)
+```
+
+**5 个 divide** 指向同一坨地址，只是 shape tuple 嵌套方式不同（同 content 不同 view）：
+
+| 函数 | shape | 怎么取第 (i, j) 块 |
+|------|------|------|
+| `logical_divide` | `((BLK_M, m), (BLK_N, n))` | `result((_,i), (_,j))` |
+| `zipped_divide` | `((BLK_M, BLK_N), (m, n))` | `result(_, (i, j))` |
+| `tiled_divide` | `((BLK_M, BLK_N), m, n)` | `result(_, i, j)` ← 最常用 |
+| `flat_divide` | `(BLK_M, BLK_N, m, n)` | `result(_, _, i, j)` |
+
+**2 个 partition** 在 zipped_divide 上切一刀：
+
+| 函数 | 切哪边 | 保留哪边 | 语义 |
+|------|--------|----------|------|
+| `inner_partition` ≈ `local_tile` | 切 rest | 保留 tile | "我是第 (i,j) 个 CTA，给我那一块 tile" |
+| `outer_partition` ≈ `local_partition` | 切 tile | 保留 rest | "我是第 t 个 thread，给我散在各个 tile 里的同一位置" |
+
+**决策树**：
+```
+我要干啥？
+├─ 算法层推导 layout                      → tiled_divide / flat_divide
+├─ kernel 入口，CTA 取自己那块            → local_tile
+├─ thread 协作搬一片 tile（GMEM→SMEM）    → local_partition
+├─ 用 TiledCopy 抽象的协作搬运            → TiledCopy::partition_S/D
+└─ 用 TiledMMA 给每 thread 取 MMA fragment → TiledMMA::partition_A/B/C
+```
+
+`TiledCopy::partition_S/D` 内部本质就是 `outer_partition` + 自动算的 thr_layout（来自 Copy_Atom 硬件要求）。`TiledMMA::partition_A/B/C` 在此基础上还套 (T, V) → element 的 ALayout 硬件接线。
+
+### O11. Per-mode complement vs whole-tile complement
+
+zipped_divide 内部用 per-mode complement（按维度独立调），跟直接调 whole-tile complement **L 紧凑时等价**（image 集合一致），**L 非紧凑时不等价**（只有 whole-tile 能看跨 mode gap）。
+
+**具体例子**（L=(6,8):(8,1) 紧凑，tile=((2:1),(4:1))）：
+
+| 路径 | 计算 | 结果 |
+|------|------|------|
+| Per-mode | `complement(2:1, 6) = 3:2`<br>`complement(4:1, 8) = 2:4` | 经 composition 合成 zipped_divide rest = `(3,2):(16,4)` |
+| Whole-tile | `complement((2,4):(8,1), 48)` | `(2,3):(4,16)` |
+
+两者 image 集合都是 `{0, 4, 16, 20, 32, 36}`，只是 shape 嵌套顺序换了。
+
+**结构差异**：
+- Per-mode：N 次调用，每次输入 1D，cotarget = 该 mode size（坐标空间），输出 N 个独立 1D layout
+- Whole-tile：1 次调用，输入多维 layout，cotarget = L 的 cosize（地址空间），输出单个多维 layout
+
+**zipped_divide 选 per-mode 的理由**：
+1. tuple tiler API 自然按 mode 拆
+2. logical_divide 输出 `((BLK_M, m), (BLK_N, n))` 需要每 mode 独立的 tile+rest 嵌套
+3. 编译期优化：小 1D 静态 shape 比 rank-N 静态 shape 快
+
+**L 非紧凑时**（如 L=(4,4):(1,8) 有 gap），per-mode 看不见跨 mode 的 gap，只有 whole-tile 能整体填洞。后者用于 `logical_product`、`right_inverse`、扩展 codomain 等代数原语场景。
+
+### O12. MMA atom 内的 ALayout/BLayout/CLayout 是硬件接线图
+
+**误解**：以为是 GMEM→SMEM 加载的映射。  
+**实际**：描述 MMA 指令执行那一刻、(lane_id, val_id) → 该元素在原子 tile 中的位置。
+
+```
+A 已经在 RMEM 里
+    ↓
+ALayout: (lane_id, val_id) → A 矩阵中的元素索引
+    ↓
+mma.sync 指令（硬件接线钉死）
+```
+
+硬件 mma 单元的 lane→element 接线是物理连线，软件不能选。CuTe 用一个 Layout 函数把它包起来。
+
+**SM80 m16n8k16 fp16 ALayout 拆解**：
+```
+ALayout = ((_4, _8), (_2, _2, _2)) : ((_32, _1), (_16, _8, _128))
+            └──T=32──┘└────V=8─────┘
+```
+- Thread mode (4, 8): t0=lane%4=threadID_in_group, t1=lane/4=groupID
+- Value mode (2, 2, 2): (reg-internal pair, low/high-M, low/high-K) — 对应 4 个 .b32 register {a0,a1,a2,a3} 的组合
+
+设计哲学：硬件接线包进 Layout 函数 → 编译期零开销 → 跟 logical_divide/composition 兼容 → 统一所有架构（SM75/80/90/100），上层 cute::gemm 完全不需要知道架构。
+
+### O13. make_fragment_A/B/C 不只做检查
+
+`mma_atom.hpp:120-195` 的三件事：
+
+1. **检查**（`CUTE_STATIC_ASSERT_V`）：rank≥3、V 维 size 匹配 atom 期望、元素类型匹配
+2. **分配寄存器存储**（关键）：
+   - `make_fragment_C` 永远新建一个 RMEM tensor（C 是累加器，必须独立 register）
+   - `make_fragment_A/B`：若 `FrgTypeA` 是 view 类型（有 dereference），返回输入的 reinterpret view；否则新建
+3. **跨架构选 view vs copy**：
+   - SM80：A/B 必须在 RMEM → 新建寄存器存储
+   - SM90 (WGMMA)：A/B 在 SMEM 由硬件 descriptor 读 → 返回 SMEM view，不复制
+   - SM100 (UMMA)：类似 SMEM/TMEM view
+
+设计哲学：让上层 `cute::gemm` 跨架构代码不变——同样调 `make_fragment_A`，SM80 分配 RMEM、SM90 给 SMEM view，使用者透明。
+
+### O14. mma_unpack 是 Tensor → PTX 的胶水
+
+`mma_traits.hpp:113` 的 `mma_unpack` 把 4 个 Tensor 翻译成位置参数喂给 `MMA_Op::fma`（裸 inline asm）：
+
+1. 静态断言 4 个 tensor 都在 RMEM
+2. `recast<RegTypeA>(A)`：把 `Tensor<half_t, ...>` shape (V=8) 重新解释为 `Tensor<uint32_t, ...>` shape (V=4)（2 fp16 packed/uint32）
+3. size 校验：recast 后的元素数必须等于 PTX 接口要的 register 数
+4. `detail::explode`：用 integer pack expansion 把 4 个 Tensor 展开成 N 个 `uint32_t&` 位置参数，调用 `MMA_Op::fma(d0, d1, a0, ..., a3, b0, b1, c0, c1)`
+
+设计哲学：架构特化的 raw `fma` 函数手写 inline asm（每架构一份）；通用 `mma_unpack` 通过 recast + explode 适配任意 register 数。加新架构时 mma_unpack 不变。
+
+### O15. partition_X 输出 VMK/VNK/VMN
+
+`partition_C(tile_tensor)` 返回 **rank-3 tensor**，含义：
+
+| 函数 | 输出 shape | 含义 |
+|------|-----------|------|
+| `partition_A(gA)` | `(V, RestM, RestK)` | V = atom 内 per-thread 持值数（A 是 8）；RestM/K = 该 thread 沿 M/K 覆盖几个 atom |
+| `partition_B(gB)` | `(V, RestN, RestK)` | 类似 |
+| `partition_C(gC)` | `(V, RestM, RestN)` | C 没有 K |
+
+V 维 size 等于 `ALayout/BLayout/CLayout` 的第二个 mode（per-thread 值数，是 atom 钉死的常量）。RestM/RestN/RestK 跟着用户传进来的 tile size scale。
+
+`partition_X` 输出仍在原 memory（GMEM/SMEM），**只是 layout 换成 thread 视角**。配 `make_fragment_X` 才得到 register tensor。
+
+### O16. cute::gemm 只占完整 GEMM kernel 的 ~1 行
+
+`cute::gemm(mma, rA, rB, rC)` 只是**最内层的 mma 累加 + serpentine 优化**，不是完整 GEMM。完整 sgemm_sm80 ~150 行里，cute::gemm 占 1 行，其余是：
+
+```
+local_tile (CTA 切块)
+TiledCopy partition + cp.async (GMEM→SMEM)
+TiledCopy partition_S/D (SMEM→RMEM via ldmatrix)
+K-loop: cp_async_wait → ldmatrix → cute::gemm → next cp.async
+epilogue: copy 结果回 GMEM
+grid/tile 调度
+```
+
+不要被 "cute::gemm" 的名字误导以为它能独立实现 GEMM。
+
+### O17. GEMM-TN 实战占主流 80%+
+
+**原因**：GEMM-TN（A、B 都 K-major）在 GMEM 的 stride 配置**天然跟 MMA-TN 的硬件需求一致**——`cp.async` 灌进 SMEM 后 `ldmatrix` 直送 register，**无 SMEM 转置中转**。
+
+其它三种：
+- **NT**：A、B 都不 K-major → 需要 SMEM 同时转置 A、B
+- **NN**：B K-major 但 A 不 → 只转 A
+- **TT**：A K-major 但 B 不 → 只转 B
+
+业界 fp16 / bf16 tensor core 生产 kernel ~80% 走 TN。CUTLASS 的 benchmark / Hopper WGMMA / Blackwell UMMA 例子也几乎全 TN。PyTorch `torch.matmul(A, B)` 两个 row-major 实际是 TT 配置，后端通常先 transpose B 转成 TN。
+
+### O18. local_partition 实现：outer_partition + thr_layout.get_flat_coord
+
+源码 `tensor_impl.hpp:1079`：
+```cpp
+local_partition(tensor, thr_layout, thr_idx) {
+  return outer_partition(tensor,
+                         product_each(shape(thr_layout)),     // ① 每 thread tile size
+                         thr_layout.get_flat_coord(thr_idx)); // ② thread idx → 多维 coord
+}
+```
+
+`outer_partition` 跟 `inner_partition`（即 `local_tile`）相反：切第一维（tile）保留第二维（rest）。结果是**每个 thread 拿到散在各 tile 中、跟它角色一致的元素**，而不是一整块 tile。
+
+例子：data (16, 64)，thr_layout `Layout<Shape<_2,_16>>` (32 threads 排成 2×16)：
+- "thread tile" size = (2, 16) → 把 data 切成 (8, 4) 个 (2, 16) 块
+- thr 0 在每个块里负责位置 (0, 0)，总共拿 8×4=32 个元素
+- 返回 shape `(8, 4)`，**散布**在整个 (16, 64) 中
+
+典型场景：GMEM→SMEM 协作搬运，32 thread 各拿 4 fp16 形成合并访问。
+
+---
+
 ## 三、Agent 这次犯的错 + 修正记录
 
 每条记录：**错在哪 → 实际正确答案 → 教训**。下次类似话题先查源码再答。
@@ -145,6 +345,11 @@ BLAS↔CuTe 对照表（原文 line 107-112，背下来）：
 - **错**：早期讲解时说 "A (M, K), B (K, N), C (M, N)"
 - **正**：CuTe 用 **A (M, K), B (N, K), C (M, N)** —— 见 O4 的官方原文
 - **教训**：CuTe 跟 BLAS 不一样，永远用 CuTe 约定
+
+### E13. Per-mode vs whole-tile complement 第一次给的对比例子无意义
+- **错**：用户问"per-mode complement 跟直接调 complement 结果差别"，agent 第一次给的例子用 `complement(L, cosize(L))` —— L 紧凑时这是 trivial `_1:_0`，根本对比不出来
+- **正**：用户指出后改用 `complement(tile, cosize(L))` —— 把 tile 当成 L 地址空间里的一坨 layout 调 complement，得到 `(2,3):(4,16)`，跟 per-mode 经 composition 出来的 `(3,2):(16,4)` image 相同（只是 shape 转置），形成有效对比
+- **教训**：对比两个 API 时，参数选择要让**两边都返回有意义的结果**，否则只是 "API A 给 trivial，API B 给非 trivial" 的伪对比
 
 ---
 

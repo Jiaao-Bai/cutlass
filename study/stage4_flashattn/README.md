@@ -1,9 +1,9 @@
 # Stage 4 — FlashAttention（SM90 → SM100）
 
-预计 5 周（W12–W15 Hopper + W21 Blackwell），约 75h。
+预计 5 周（W14–W17 Hopper + W18 Blackwell），约 75h。
 
 > **硬件**：🟢 5060 Ti 主战（用 SM120 mainloop 跑 FA 框架；FP4 量化 FA 实验也可在本地）
-> 🟡 H20（W13-W15 WGMMA FA 实测 + 88_hopper_fmha 基线对照）｜ 🔴 B200（W21 UMMA + TMEM FA 实测）
+> 🟡 H20（W15-W17 WGMMA FA 实测 + 88_hopper_fmha 基线对照）｜ 🔴 B200（W18 UMMA + TMEM FA 实测）
 
 ## 阶段目标
 
@@ -13,17 +13,17 @@
 - 能把 SM90 FA 迁移到 SM100（UMMA atom + TMEM accumulator）
 - 加分项：在 5060 Ti 上做 fp4/fp6 量化 FA 实验
 
-> 课程顺序：**SM90 FA 优化做透（W12-W15），再 SM100 迁移（W21）**。FA mental model 比 GEMM 更细（softmax / causal / pipeline），迁移时只换 atom + accumulator 位置。
+> 课程顺序：**SM90 FA 优化做透（W14-W17），再 SM100 迁移（W18）**。FA mental model 比 GEMM 更细（softmax / causal / pipeline），迁移时只换 atom + accumulator 位置。
 
 ## 周次
 
 | 周 | 标题 | 主战硬件 | 输出 |
 |----|------|---------|------|
-| W12 | [FA 算法](week12_fa_algorithm/) | 🟢 5060 Ti / CPU | numpy/Python 写一份 online softmax 参考 |
-| W13 | [FA fwd writeup](week13_fa_fwd_writeup/) | 🟢 5060 Ti + 🟡 H20 | `ex_fa_fwd_v1.cu` 正确性通过 |
-| W14 | [FA fwd optimize](week14_fa_fwd_optimize/) | 🟢 5060 Ti + 🟡 H20 | v2 ≥ 80% 88_hopper_fmha；FP4 实验可选 |
-| W15 | [FA bwd](week15_fa_bwd/) | 🟢 5060 Ti + 🟡 H20 | dQ/dK/dV 正确性 |
-| W21 | [SM100 FA](week21_sm100_fa/) | 🟢 5060 Ti 读 + 🔴 B200 实测 | UMMA + TMEM 迁移版 |
+| W14 | [FA 算法](week14_fa_algorithm/) | 🟢 5060 Ti / CPU | numpy/Python 写一份 online softmax 参考 |
+| W15 | [FA fwd writeup](week15_fa_fwd_writeup/) | 🟢 5060 Ti + 🟡 H20 | `ex_fa_fwd_v1.cu` 正确性通过 |
+| W16 | [FA fwd optimize](week16_fa_fwd_optimize/) | 🟢 5060 Ti + 🟡 H20 | v2 ≥ 80% 88_hopper_fmha；FP4 实验可选 |
+| W17 | [FA bwd](week17_fa_bwd/) | 🟢 5060 Ti + 🟡 H20 | dQ/dK/dV 正确性 |
+| W18 | [SM100 FA](week18_sm100_fa/) | 🟢 5060 Ti 读 + 🔴 B200 实测 | UMMA + TMEM 迁移版 |
 
 ## CHECKPOINT — 进入 Stage 5 前必过
 

@@ -14,24 +14,28 @@
 | 2 | W5 — WGMMA (SM90) | ☐ | | |
 | 2 | W6 — TMA (SM90/SM100/SM120 共用) | ☐ | | |
 | 2 | W7 — Pipeline + Cluster (SM90) | ☐ | | |
-| 2 | W19 — TMEM + UMMA (SM100 增量) | ☐ | | |
+| 2 | W8 — TMEM + UMMA (SM100 增量) | ☐ | | |
 | 2 | **CHECKPOINT** | ☐ | minimal warpspec ping-pong 玩具 + minimal UMMA toy | |
-| 3 | W8 — 3.x 分层设计 | ☐ | | |
-| 3 | W9 — WarpSpec writeup (SM90) | ☐ | | |
-| 3 | W10 — WarpSpec optimize (SM90) | ☐ | | |
-| 3 | W11 — Pingpong vs Cooperative (SM90) | ☐ | | |
-| 3 | W20 — SM100 GEMM 迁移 | ☐ | | |
+| 3 | W9 — 3.x 分层设计 | ☐ | | |
+| 3 | W10 — WarpSpec writeup (SM90) | ☐ | | |
+| 3 | W11 — WarpSpec optimize (SM90) | ☐ | | |
+| 3 | W12 — Pingpong vs Cooperative (SM90) | ☐ | | |
+| 3 | W13 — SM100 GEMM 迁移 | ☐ | | |
 | 3 | **CHECKPOINT** | ☐ | SM90 GEMM ≥ 70% cuBLAS（H20）+ SM100 GEMM 在 B200 上跑通 | |
-| 4 | W12 — FA 算法 | ☐ | | |
-| 4 | W13 — FA fwd writeup (SM90) | ☐ | | |
-| 4 | W14 — FA fwd optimize (SM90) | ☐ | | |
-| 4 | W15 — FA bwd (SM90) | ☐ | | |
-| 4 | W21 — SM100 FA 迁移 | ☐ | | |
+| 4 | W14 — FA 算法 | ☐ | | |
+| 4 | W15 — FA fwd writeup (SM90) | ☐ | | |
+| 4 | W16 — FA fwd optimize (SM90) | ☐ | | |
+| 4 | W17 — FA bwd (SM90) | ☐ | | |
+| 4 | W18 — SM100 FA 迁移 | ☐ | | |
 | 4 | **CHECKPOINT** | ☐ | SM90 FA fwd ≥ 80% 88_hopper_fmha + SM100 FA 在 B200 上跑通 | |
-| 5 | W16 — Grouped GEMM | ☐ | | |
-| 5 | W17 — Routing | ☐ | | |
-| 5 | W18 — Fused MoE | ☐ | | |
+| 5 | W19 — Grouped GEMM | ☐ | | |
+| 5 | W20 — Routing | ☐ | | |
+| 5 | W21 — Fused MoE | ☐ | | |
 | 5 | **CHECKPOINT** | ☐ | end-to-end MoE forward 正确（fp16 / 可选 fp4 量化）| |
+| 6 | W22 — Pipeline + Collective 精读 | ☐ | | |
+| 6 | W23 — Kernel + Scheduler 精读 | ☐ | | |
+| 6 | W24 — EVT + 架构对比 | ☐ | | |
+| 6 | **CHECKPOINT** | ☐ | 架构图 + 三架构 cheat sheet + 设计决策笔记 | |
 | 7 | 持续调优 | ☐ | | |
 
 ---

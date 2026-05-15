@@ -11,8 +11,8 @@
 
 | 文件 | 行数 | 何时读 |
 |------|------|--------|
-| `sm90_pipeline.hpp` | 1388 | [Stage 2 W7](stage2_sm90_primitives/week07_pipeline_cluster/) |
-| `sm100_pipeline.hpp` | 1328 | [Stage 6 W19](stage6_b200_increment/week19_tmem_umma/) 之后，对照读 |
+| `sm90_pipeline.hpp` | 1388 | [Stage 2 W7](stage2_primitives/week07_pipeline_cluster/) |
+| `sm100_pipeline.hpp` | 1328 | [Stage 2 W8](stage2_primitives/week08_tmem_umma/) 之后，对照读 |
 
 **`sm90_pipeline.hpp` 设计重点**（W7 必看）：
 - `PipelineState`：循环 buffer 的 `index + phase`，避免 ABA 问题
@@ -21,7 +21,7 @@
 
 写 FlashAttention / MoE kernel 时，producer/consumer 同步直接参照这个模式。
 
-**`sm100_pipeline.hpp` 增量**（W19 必看）：
+**`sm100_pipeline.hpp` 增量**（W8 必看）：
 - 比 SM90 多一组 TMEM 相关 mbarrier
 - consumer 语义在 UMMA 写 TMEM 之后才能 release
 - `PipelineTmaUmmaAsync` 是 SM100 的主力
@@ -30,12 +30,12 @@
 
 | 文件 | 行数 | 何时读 |
 |------|------|--------|
-| `sm90_gemm_tma_warpspecialized.hpp` | — | [Stage 3 W9](stage3_hopper_gemm/week09_warpspec_writeup/) — 写 v1 时直接抄结构 |
-| `sm90_gemm_tma_warpspecialized_pingpong.hpp` | 947 | [Stage 3 W11](stage3_hopper_gemm/week11_pingpong_vs_coop/) |
-| `sm90_gemm_tma_warpspecialized_cooperative.hpp` | — | Stage 3 W11 |
-| `sm100_gemm_tma_warpspecialized.hpp` | — | [Stage 6 W20](stage6_b200_increment/week20_sm100_gemm/) |
+| `sm90_gemm_tma_warpspecialized.hpp` | — | [Stage 3 W10](stage3_gemm/week10_warpspec_writeup/) — 写 v1 时直接抄结构 |
+| `sm90_gemm_tma_warpspecialized_pingpong.hpp` | 947 | [Stage 3 W12](stage3_gemm/week12_pingpong_vs_coop/) |
+| `sm90_gemm_tma_warpspecialized_cooperative.hpp` | — | Stage 3 W12 |
+| `sm100_gemm_tma_warpspecialized.hpp` | — | [Stage 3 W13](stage3_gemm/week13_sm100_gemm/) |
 
-**Pingpong kernel 的结构骨架**（W11）：
+**Pingpong kernel 的结构骨架**（W12）：
 ```
 kernel()
 ├── if (is_producer_warp)
@@ -50,27 +50,27 @@ kernel()
 
 | 文件 | 行数 | 何时读 |
 |------|------|--------|
-| `sm90_mma_tma_gmma_ss_warpspecialized.hpp` | 584 | [Stage 3 W8 + W9](stage3_hopper_gemm/) |
-| `builders/sm90_gmma_builder.inl` | — | [Stage 3 W10](stage3_hopper_gemm/week10_warpspec_optimize/) — 抄它的 swizzle/depth 选择逻辑 |
-| `sm100_mma_*.hpp` | — | [Stage 6 W20](stage6_b200_increment/week20_sm100_gemm/) |
+| `sm90_mma_tma_gmma_ss_warpspecialized.hpp` | 584 | [Stage 3 W9 + W10](stage3_gemm/) |
+| `builders/sm90_gmma_builder.inl` | — | [Stage 3 W11](stage3_gemm/week11_warpspec_optimize/) — 抄它的 swizzle/depth 选择逻辑 |
+| `sm100_mma_*.hpp` | — | [Stage 3 W13](stage3_gemm/week13_sm100_gemm/) |
 
-**设计亮点**（W9 必抓）：
+**设计亮点**（W10 必抓）：
 - `load()` 和 `mma()` 是两个**独立函数**，分别由不同 warpgroup 调用，通过 pipeline state 对齐
 - 这种分离模式是写 FA 时 QK^T 与 PV 两阶段 mainloop 的直接参考——把它当模板复用
 
-`builders/sm90_gmma_builder.inl`（W10）：Builder 帮你做了什么——swizzle 选哪个、pipeline depth 设多少、cluster shape 配合 multicast——直接抄它的判断逻辑到自己的 kernel。
+`builders/sm90_gmma_builder.inl`（W11）：Builder 帮你做了什么——swizzle 选哪个、pipeline depth 设多少、cluster shape 配合 multicast——直接抄它的判断逻辑到自己的 kernel。
 
 ### 4. Tile Scheduler — `include/cutlass/gemm/kernel/`
 
 | 文件 | 何时读 |
 |------|--------|
-| `sm90_tile_scheduler.hpp` | [Stage 3 W10](stage3_hopper_gemm/week10_warpspec_optimize/) — persistent scheduler 入门 |
-| `sm90_tile_scheduler_group.hpp` | [Stage 5 W16](stage5_moe/week16_grouped_gemm/) — Grouped GEMM 调度 |
-| `tile_scheduler_params.h` | Stage 3 W10 — stream-K / data-parallel 策略选择 |
+| `sm90_tile_scheduler.hpp` | [Stage 3 W11](stage3_gemm/week11_warpspec_optimize/) — persistent scheduler 入门 |
+| `sm90_tile_scheduler_group.hpp` | [Stage 5 W19](stage5_moe/week19_grouped_gemm/) — Grouped GEMM 调度 |
+| `tile_scheduler_params.h` | Stage 3 W11 — stream-K / data-parallel 策略选择 |
 
-**`get_current_work()` 的动态调度设计**：可以直接复用到自定义 MoE kernel 的 expert 负载均衡（Stage 5 W18）。
+**`get_current_work()` 的动态调度设计**：可以直接复用到自定义 MoE kernel 的 expert 负载均衡（Stage 5 W21）。
 
-`stream-K` 是把 K 维度也切给不同 SM 协作算同一个 (M,N) tile，对极扁矩阵（M、N 小、K 大）有奇效。Stage 3 W11 ping-pong vs cooperative 之外，可以加一个 stream-K 变体作为额外练习。
+`stream-K` 是把 K 维度也切给不同 SM 协作算同一个 (M,N) tile，对极扁矩阵（M、N 小、K 大）有奇效。Stage 3 W12 ping-pong vs cooperative 之外，可以加一个 stream-K 变体作为额外练习。
 
 ---
 
@@ -80,15 +80,15 @@ kernel()
 
 | 文件 | 何时读 |
 |------|--------|
-| `epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp` | [Stage 3 W10](stage3_hopper_gemm/week10_warpspec_optimize/) — epilogue TMA 写回 |
-| `epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp` | Stage 3 W10 — EVT callback 组合 |
-| `epilogue/fusion/operations.hpp` | Stage 3 W10 — `LinearCombination` / `Bias` / `Activation` 等基础 op |
+| `epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp` | [Stage 3 W11](stage3_gemm/week11_warpspec_optimize/) — epilogue TMA 写回 |
+| `epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp` | Stage 3 W11 — EVT callback 组合 |
+| `epilogue/fusion/operations.hpp` | Stage 3 W11 — `LinearCombination` / `Bias` / `Activation` 等基础 op |
 
 EVT 把 `alpha*C + beta*D`、bias add、activation 等后处理组合成一棵**编译期类型树**，在 kernel 里零开销展开。
 
 **为什么是"选读"**：手写 GEMM 自己写 epilogue 可以不用 EVT，但写 FA 时 softmax rescale + output accumulate 的 visitor pattern 可以借鉴；写 MoE 时 SwiGLU fuse 在 first GEMM epilogue 也可以借鉴这个组合模式。
 
-**Stage 3 W10 推荐**：读完 builder 后，加一个 EVT 练习 `ex_evt_bias_relu.cu`（在 v2 epilogue 加 bias + ReLU），看一遍编译产物的 SASS，确认确实没多读多写。
+**Stage 3 W11 推荐**：读完 builder 后，加一个 EVT 练习 `ex_evt_bias_relu.cu`（在 v2 epilogue 加 bias + ReLU），看一遍编译产物的 SASS，确认确实没多读多写。
 
 ### 其它可选
 

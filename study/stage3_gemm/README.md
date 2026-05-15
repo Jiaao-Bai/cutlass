@@ -1,9 +1,9 @@
 # Stage 3 — 手写 GEMM（SM90 → SM100）
 
-预计 5 周（W8–W11 Hopper + W20 Blackwell），约 75h。
+预计 5 周（W9–W12 Hopper + W13 Blackwell），约 75h。
 
 > **硬件**：🟢 5060 Ti 主战（用 `MainloopSm120TmaWarpSpecialized` 在本地跑完整 TMA + WarpSpec + Cluster 框架）
-> 🟡 H20（W9-W11 WGMMA 实测 + cuBLAS 基线）｜ 🔴 B200（W20 UMMA + TMEM 实测）
+> 🟡 H20（W10-W12 WGMMA 实测 + cuBLAS 基线）｜ 🔴 B200（W13 UMMA + TMEM 实测）
 
 ## 阶段目标
 
@@ -13,17 +13,17 @@
 - 能把 SM90 WGMMA mainloop 迁移到 SM100 UMMA + TMEM（atom + accumulator 改动，框架 90% 不变）
 - **CHECKPOINT**：自写 GEMM 在 H20 上 ≥ 70% cuBLAS；SM100 版本在 B200 上跑通 + 性能对照
 
-> 课程顺序：**SM90 GEMM 优化到底（W8-W11）后再做 SM100 迁移（W20）**。WGMMA mental model 牢固后，SM100 的核心改动（UMMA atom + TMEM accumulator）只是 atom 替换。
+> 课程顺序：**SM90 GEMM 优化到底（W9-W12）后再做 SM100 迁移（W13）**。WGMMA mental model 牢固后，SM100 的核心改动（UMMA atom + TMEM accumulator）只是 atom 替换。
 
 ## 周次
 
 | 周 | 标题 | 主战硬件 | 输出 |
 |----|------|---------|------|
-| W8 | [3.x 分层设计](week08_3x_design/) | 🟢 5060 Ti | 跑通 example 48/49，画一份分层架构图 |
-| W9 | [WarpSpec writeup](week09_warpspec_writeup/) | 🟢 5060 Ti SM120 mainloop + 🟡 H20 WGMMA | 自写 WarpSpec GEMM v1（正确即可）|
-| W10 | [WarpSpec optimize](week10_warpspec_optimize/) | 同上 | v2：smem swizzle + pipeline depth 调参 |
-| W11 | [Pingpong vs Cooperative](week11_pingpong_vs_coop/) | 同上 | v3 双版本，benchmark 对比 |
-| W20 | [SM100 GEMM](week20_sm100_gemm/) | 🟢 5060 Ti 读 + 🔴 B200 实测 | UMMA + TMEM 迁移版，B200 性能数字 |
+| W9 | [3.x 分层设计](week09_3x_design/) | 🟢 5060 Ti | 跑通 example 48/49，画一份分层架构图 |
+| W10 | [WarpSpec writeup](week10_warpspec_writeup/) | 🟢 5060 Ti SM120 mainloop + 🟡 H20 WGMMA | 自写 WarpSpec GEMM v1（正确即可）|
+| W11 | [WarpSpec optimize](week11_warpspec_optimize/) | 同上 | v2：smem swizzle + pipeline depth 调参 |
+| W12 | [Pingpong vs Cooperative](week12_pingpong_vs_coop/) | 同上 | v3 双版本，benchmark 对比 |
+| W13 | [SM100 GEMM](week13_sm100_gemm/) | 🟢 5060 Ti 读 + 🔴 B200 实测 | UMMA + TMEM 迁移版，B200 性能数字 |
 
 ## CHECKPOINT — 进入 Stage 4 前必过
 

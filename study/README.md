@@ -10,18 +10,17 @@
 
 ## 路线图
 
-| 阶段 | 内容 | 周（含 SM 顺序）| 预计时长 | 目录 |
+| 阶段 | 内容 | 周 | 预计时长 | 目录 |
 |------|------|------|----------|------|
 | Stage 1 | CuTe 张量代数 | W1–4 | 60h | [stage1_cute_algebra/](stage1_cute_algebra/) |
-| Stage 2 | 硬件原语（SM90 → SM100 增量）| W5–7 (SM90)、W19 (SM100) | 60h | [stage2_primitives/](stage2_primitives/) |
-| Stage 3 | 手写 GEMM（SM90 → SM100） | W8–11 (Hopper)、W20 (Blackwell) | 75h | [stage3_gemm/](stage3_gemm/) |
-| Stage 4 | FlashAttention（SM90 → SM100）| W12–15 (Hopper)、W21 (Blackwell) | 75h | [stage4_flashattn/](stage4_flashattn/) |
-| Stage 5 | Sparse MoE | W16–18 | 45h | [stage5_moe/](stage5_moe/) |
+| Stage 2 | 硬件原语（SM90 → SM100 增量）| W5–8 | 60h | [stage2_primitives/](stage2_primitives/) |
+| Stage 3 | 手写 GEMM（SM90 → SM100） | W9–13 | 75h | [stage3_gemm/](stage3_gemm/) |
+| Stage 4 | FlashAttention（SM90 → SM100）| W14–18 | 75h | [stage4_flashattn/](stage4_flashattn/) |
+| Stage 5 | Sparse MoE | W19–21 | 45h | [stage5_moe/](stage5_moe/) |
+| Stage 6 | 源码精读 | W22–24 | 45h | [stage6_source_reading/](stage6_source_reading/) |
 | Stage 7 | 极致调优 | 持续 | — | [stage7_tuning/](stage7_tuning/) |
 
-**Stage 顺序约定**（2026-05 调整）：
-- 原 Stage 6（W19/W20/W21）打散到 Stage 2/3/4。**Stage 内部 SM 串行**：先把 SM90 优化做透，再 SM100 迁移
-- Stage 2 一次性消化 SM90 + SM100 硬件原语（避免后续 SM100 还要重新捡 SM90 细节）
+**Stage 内部 SM 串行**：先把 SM90 优化做透，再 SM100 迁移。Stage 2 一次性消化 SM90 + SM100 硬件原语（避免后续 SM100 还要重新捡 SM90 细节）。
 
 **硬件优先级**（每周 README 标题下有详细标记）：
 
@@ -29,9 +28,9 @@
 |------|------|----------|
 | 🟢 **5060 Ti 主战**（你拥有的卡）| 完全在本地跑 | W1-W4 全部；W6/W7（TMA + SM90 风格 cluster）；Stage 3-5 的 WarpSpec 主循环（用 SM120 mainloop 跑）；FP4 量化实验 |
 | 🟡 **租 H20 实测**（~$1-3/hr）| 跑真 WGMMA | W5（WGMMA PTX）；Stage 3-4 的 WGMMA 性能数字 |
-| 🔴 **租 B200 实测**（~$5-15/hr）| 跑 UMMA + TMEM | W19（UMMA primer）；W20/W21（SM100 性能数字）|
+| 🔴 **租 B200 实测**（~$5-15/hr）| 跑 UMMA + TMEM | W8（UMMA primer）；W13/W18（SM100 性能数字）|
 
-> **关键事实**：5060 Ti (SM120) 不是"残血 SM100"——SM120 是 **SM90 软件栈 + fp4/fp6 块缩放 mma.sync**，**没有 UMMA / TMEM**，但**继承了完整 TMA + cluster + WarpSpec**。详见 [stage1_cute_algebra/THINKING.md O20](stage1_cute_algebra/THINKING.md)。
+> **关键事实**：5060 Ti (SM120) 不是"残血 SM100"——SM120 是 **SM90 软件栈 + fp4/fp6 块缩放 mma.sync**，**没有 UMMA / TMEM**，但**继承了完整 TMA + cluster + WarpSpec**。详见 [THINKING.md O20](THINKING.md)。
 
 进度跟踪：[PROGRESS.md](PROGRESS.md)
 
@@ -79,7 +78,9 @@
 study/
 ├── README.md                # 本文件
 ├── PROGRESS.md              # 每周完成情况 + ncu 关键指标
+├── THINKING.md              # 跨 stage 的洞察 / 踩坑 / 方法论
 ├── CMakeLists.txt           # 一键 build 所有练习
+├── cutlass_reading_strategy.md  # include/cutlass/ 67 万行取舍清单
 ├── common/                  # 共享 util（timing / ref check）
 │
 ├── stage1_cute_algebra/
@@ -91,37 +92,40 @@ study/
 │   ├── week03_tiledmma/
 │   └── week04_tiledcopy/
 │
-├── stage2_sm90_primitives/
+├── stage2_primitives/
 │   ├── README.md
 │   ├── week05_wgmma/
 │   ├── week06_tma/
-│   └── week07_pipeline_cluster/
+│   ├── week07_pipeline_cluster/
+│   └── week08_tmem_umma/
 │
-├── stage3_hopper_gemm/
+├── stage3_gemm/
 │   ├── README.md
-│   ├── week08_3x_design/
-│   ├── week09_warpspec_writeup/
-│   ├── week10_warpspec_optimize/
-│   └── week11_pingpong_vs_coop/
+│   ├── week09_3x_design/
+│   ├── week10_warpspec_writeup/
+│   ├── week11_warpspec_optimize/
+│   ├── week12_pingpong_vs_coop/
+│   └── week13_sm100_gemm/
 │
 ├── stage4_flashattn/
 │   ├── README.md
-│   ├── week12_fa_algorithm/
-│   ├── week13_fa_fwd_writeup/
-│   ├── week14_fa_fwd_optimize/
-│   └── week15_fa_bwd/
+│   ├── week14_fa_algorithm/
+│   ├── week15_fa_fwd_writeup/
+│   ├── week16_fa_fwd_optimize/
+│   ├── week17_fa_bwd/
+│   └── week18_sm100_fa/
 │
 ├── stage5_moe/
 │   ├── README.md
-│   ├── week16_grouped_gemm/
-│   ├── week17_routing/
-│   └── week18_fused_moe/
+│   ├── week19_grouped_gemm/
+│   ├── week20_routing/
+│   └── week21_fused_moe/
 │
-├── stage6_b200_increment/   # ★ 不是附录，而是正式阶段
+├── stage6_source_reading/
 │   ├── README.md
-│   ├── week19_tmem_umma/
-│   ├── week20_sm100_gemm/
-│   └── week21_sm100_fa/
+│   ├── week22_pipeline_collective/
+│   ├── week23_kernel_scheduler/
+│   └── week24_evt_arch_compare/
 │
 └── stage7_tuning/
     ├── README.md
@@ -167,14 +171,14 @@ make study_stage1_w02_hgemm_naive -j
 → **[cutlass_reading_strategy.md](cutlass_reading_strategy.md)**
 
 简单说：
-- `pipeline/sm90_pipeline.hpp`（1388 行）→ Stage 2 W7
-- `gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp`（584 行）→ Stage 3 W8/W9
-- `gemm/kernel/sm90_gemm_tma_warpspecialized_pingpong.hpp`（947 行）→ Stage 3 W11
-- `gemm/kernel/sm90_tile_scheduler*.hpp` → Stage 3 W10、Stage 5 W16
-- `pipeline/sm100_pipeline.hpp`（1328 行）→ Stage 6 W19
-- 选读：EVT（`epilogue/collective/` + `epilogue/fusion/`）→ Stage 3 W10
+- `pipeline/sm90_pipeline.hpp`（1388 行）→ Stage 2 W7 片段读 + **Stage 6 W22 全文精读**
+- `gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp`（584 行）→ Stage 3 W9/W10 片段读 + **Stage 6 W22 全文精读**
+- `gemm/kernel/sm90_gemm_tma_warpspecialized_pingpong.hpp`（947 行）→ Stage 3 W12 片段读 + **Stage 6 W23 全文精读**
+- `gemm/kernel/sm90_tile_scheduler*.hpp` → Stage 3 W11、Stage 5 W19 片段读 + **Stage 6 W23 全文精读**
+- `pipeline/sm100_pipeline.hpp`（1328 行）→ Stage 2 W8 片段读 + **Stage 6 W22 全文精读**
+- EVT（`epilogue/collective/` + `epilogue/fusion/`）→ Stage 3 W11 选读 + **Stage 6 W24 全文精读**
 
-**不要一上来就把 5000 行刷完**。每周用到再读，否则没上下文。
+**Stage 1-5 按需读片段，Stage 6 系统精读全文**。
 
 ---
 

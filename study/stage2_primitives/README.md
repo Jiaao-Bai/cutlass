@@ -1,9 +1,9 @@
 # Stage 2 — 硬件原语（SM90 + SM100 增量一起学）
 
-预计 4 周（W5–W7 SM90 + W19 SM100 增量），约 60h。
+预计 4 周（W5–W7 SM90 + W8 SM100 增量），约 60h。
 
-> **硬件**：🟢 5060 Ti 主战（W6/W7 完全本地可跑；W5/W19 读源码 + 静态编译）
-> 🟡 H20（W5 WGMMA 实测，1-2 hr sprint）｜ 🔴 B200（W19 UMMA + TMEM 实测，1-2 hr sprint）
+> **硬件**：🟢 5060 Ti 主战（W6/W7 完全本地可跑；W5/W8 读源码 + 静态编译）
+> 🟡 H20（W5 WGMMA 实测，1-2 hr sprint）｜ 🔴 B200（W8 UMMA + TMEM 实测，1-2 hr sprint）
 
 ## 阶段目标
 
@@ -13,7 +13,7 @@
 - 能解释 TMEM 分配 / 回收（`tcgen05.alloc / dealloc`），UMMA 单线程发射怎么同步
 - 完成一个 minimal warpspec ping-pong toy（不必完整 GEMM，只验证同步正确）
 
-> **课程顺序约定**：SM90 prim 一次性消化（W5-W7）后立刻学 SM100 prim（W19）——避免后续 SM100 GEMM/FA 阶段还要重新捡 WGMMA 细节。UMMA 文档大量写 "differs from WGMMA in X"，必须**先懂 WGMMA**。
+> **课程顺序约定**：SM90 prim 一次性消化（W5-W7）后立刻学 SM100 prim（W8）——避免后续 SM100 GEMM/FA 阶段还要重新捡 WGMMA 细节。UMMA 文档大量写 "differs from WGMMA in X"，必须**先懂 WGMMA**。
 
 ## 周次
 
@@ -22,7 +22,7 @@
 | W5 | [WGMMA](week05_wgmma/) | 🟢 5060 Ti 读 + 🟡 H20 实测 | 跑通 wgmma_sm90.cu + 复刻最小版 |
 | W6 | [TMA](week06_tma/) | 🟢 5060 Ti | 跑通 wgmma_tma_sm90.cu + 自写 TMA G→S 拷贝 |
 | W7 | [Pipeline + Cluster](week07_pipeline_cluster/) | 🟢 5060 Ti | minimal mbarrier ping-pong toy |
-| W19 | [TMEM + UMMA](week19_tmem_umma/) | 🟢 5060 Ti 读 + 🔴 B200 实测 | TMEM alloc + minimal UMMA toy |
+| W8 | [TMEM + UMMA](week08_tmem_umma/) | 🟢 5060 Ti 读 + 🔴 B200 实测 | TMEM alloc + minimal UMMA toy |
 
 ## CHECKPOINT — 进入 Stage 3 前必过
 
@@ -35,7 +35,7 @@
 
 放置位置：`stage2_primitives/week07_pipeline_cluster/exercises/ex_warpspec_pingpong_toy.cu`。
 
-> SM100 增量（W19）有自己的 mini CHECKPOINT：跑通 TMEM 分配 + minimal UMMA toy 即可（B200 上）。
+> SM100 增量（W8）有自己的 mini CHECKPOINT：跑通 TMEM 分配 + minimal UMMA toy 即可（B200 上）。
 
 ### 口答 7 题
 1. WGMMA 的 RS 模式（A 在寄存器）与 SS 模式（A 在 smem）各自适用什么场景？

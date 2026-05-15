@@ -18,14 +18,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > ### 目录速查
 > ```
 > study/
-> ├── README.md, PROGRESS.md, cutlass_reading_strategy.md
+> ├── README.md, PROGRESS.md, THINKING.md, cutlass_reading_strategy.md
 > ├── CMakeLists.txt                # -DCUTLASS_ENABLE_STUDY=ON 才编译
 > ├── stage1_cute_algebra/          W1-4   CuTe 张量代数
-> ├── stage2_sm90_primitives/       W5-7   WGMMA / TMA / Pipeline
-> ├── stage3_hopper_gemm/           W8-11  手写 Hopper WarpSpec GEMM
-> ├── stage4_flashattn/             W12-15 FlashAttention fwd/bwd
-> ├── stage5_moe/                   W16-18 Sparse MoE
-> ├── stage6_b200_increment/        W19-21 SM100 (TMEM/UMMA) 增量
+> ├── stage2_primitives/            W5-8   WGMMA / TMA / Pipeline / TMEM+UMMA
+> ├── stage3_gemm/                  W9-13  手写 GEMM（SM90 → SM100）
+> ├── stage4_flashattn/             W14-18 FlashAttention fwd/bwd（SM90 → SM100）
+> ├── stage5_moe/                   W19-21 Sparse MoE
+> ├── stage6_source_reading/        W22-24 源码精读（Pipeline/Kernel/EVT）
 > └── stage7_tuning/                持续：profiling + baselines
 > ```
 > 每个 `stageN/` 有 README + CHECKPOINT；每个 `weekNN/` 有 README（统一模板：目标 / 读 / 写 / 跑 / 自检）+ `exercises/`。
@@ -38,7 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - 用户问"`include/cutlass/` 里 X 文件怎么读" → 先查 `study/cutlass_reading_strategy.md` 的映射，给出"在第 N 周读"的答复。
 > - 用户答完一周的"自检题" → 帮他在 `study/PROGRESS.md` 打勾。
 > - 周次推进：完成 weekNN 的练习 + 自检，且 stage CHECKPOINT 通过，才进下一周。
-> - 用户的硬件是 H20（SM90）和 B200（SM100）；编译命令 `cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=90a`（或 `100a`）。
+> - 用户的硬件是 5060 Ti（SM120，主战）、H20（SM90，租赁）和 B200（SM100，租赁）；编译命令 `cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=120`（5060 Ti）/ `90a`（H20）/ `100a`（B200）。
 
 ---
 

@@ -1,6 +1,6 @@
 # Stage 5 — Sparse MoE
 
-预计 3 周（W16–W18），约 45h。
+预计 3 周（W19–W21），约 45h。
 
 ## 阶段目标
 
@@ -12,9 +12,9 @@
 
 | 周 | 标题 | 输出 |
 |----|------|------|
-| W16 | [Grouped GEMM](week16_grouped_gemm/) | 跑通 example 57 + 自写 minimal grouped GEMM |
-| W17 | [Routing](week17_routing/) | router + permute + unpermute 单元测试 |
-| W18 | [Fused MoE](week18_fused_moe/) | end-to-end MoE forward 正确性通过 |
+| W19 | [Grouped GEMM](week19_grouped_gemm/) | 跑通 example 57 + 自写 minimal grouped GEMM |
+| W20 | [Routing](week20_routing/) | router + permute + unpermute 单元测试 |
+| W21 | [Fused MoE](week21_fused_moe/) | end-to-end MoE forward 正确性通过 |
 
 ## CHECKPOINT — 进入 Stage 6 前必过
 

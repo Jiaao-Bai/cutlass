@@ -1,6 +1,8 @@
 # Week 20 — SM100 GEMM
 
-预计 ~15h ｜ 目标硬件：B200
+预计 ~15h
+> **硬件**：🟢 5060 Ti（读源码 + 静态编译 `sm_100a`，主要是 UMMA atom + TMEM 分配的代码理解）｜ 🔴 B200（实测真 UMMA + TMEM + 2-SM 配对 cluster 的性能数字）  
+> 本周承接 W8-W11 的 SM90 GEMM——核心改动是 MMA atom 从 WGMMA → UMMA，累加器从 RMEM → TMEM，其余 mainloop 框架 90% 不变
 
 ## 目标
 - 把 Stage 3 v3 移植到 SM100，跑出 ≥ 70% cuBLAS（B200 FP16）

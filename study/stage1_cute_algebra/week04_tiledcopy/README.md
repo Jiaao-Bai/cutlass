@@ -1,6 +1,7 @@
 # Week 4 — TiledCopy / Copy_Atom
 
-预计 ~15h ｜ 目标硬件：**任何 SM80+**（H20 / 5060 Ti / 4090 / A100；用 `cp.async` + `mma_sm80`）
+预计 ~15h
+> **硬件**：🟢 5060 Ti（任何 SM80+ 都行；用 `cp.async` + `mma_sm80`）
 
 ## 目标
 - 能解释 `Copy_Atom` 与 `MMA_Atom` 设计上的对称性

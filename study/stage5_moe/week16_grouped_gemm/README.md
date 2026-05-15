@@ -1,6 +1,7 @@
 # Week 16 — Grouped GEMM 基础
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（用 `MainloopSm120ArrayTmaWarpSpecialized` 跑 grouped GEMM 框架）｜ 🟡 H20（WGMMA 实测 grouped 性能）
 
 ## 目标
 - 看懂 grouped GEMM 与普通 GEMM 的调度差异

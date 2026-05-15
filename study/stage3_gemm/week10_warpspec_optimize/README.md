@@ -1,6 +1,7 @@
 # Week 10 — WarpSpec GEMM v2：优化
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（同 W9，SM120 mainloop 优化 pipeline/swizzle/cluster）｜ 🟡 H20（WGMMA 实测 + 真 cuBLAS 对照基线）
 
 ## 目标
 - 把 v1 的性能提到 **≥ 50% cuBLAS**

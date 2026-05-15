@@ -1,6 +1,7 @@
 # Week 13 — FA Forward v1（正确性优先）
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（用 SM120 mainloop 在本地跑 FA fwd 正确性）｜ 🟡 H20（WGMMA 实测）
 
 ## 目标
 - 自写 FA forward kernel，**复用 Stage 3 的 WarpSpec 骨架**

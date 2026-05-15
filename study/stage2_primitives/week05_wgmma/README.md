@@ -1,6 +1,8 @@
 # Week 5 — WGMMA (Warpgroup MMA)
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（读源码 + 静态编译 `sm_90a`，看 PTX）｜ 🟡 H20（实际跑 WGMMA + ncu 性能数字）  
+> **5060 Ti 注意**：SM120 没有 WGMMA，本周只能读+静态编译，跑要租 H20
 
 ## 目标
 - 看到一条 `wgmma.mma_async.sync.aligned.m64nNk16` 能拆出每段含义

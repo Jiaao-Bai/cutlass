@@ -1,6 +1,7 @@
 # Week 8 — CUTLASS 3.x 分层设计
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（读源码 + 静态编译，主要是理解 3.x 分层，跨 SM90/SM100/SM120 共通）
 
 ## 目标
 - 能画出 device → kernel → collective → tiled atom → atom 的分层图，每层指向具体文件

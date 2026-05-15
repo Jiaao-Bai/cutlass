@@ -1,6 +1,7 @@
 # Week 2 — Composition + Complement + Swizzle
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（CuTe 代数 + print，纸笔推导，CPU 也行）
 
 ## 目标
 - 能用 `composition / complement / divide` 推出任意分块 layout

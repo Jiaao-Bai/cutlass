@@ -1,6 +1,7 @@
 # Week 3 — TiledMMA / MMA_Atom
 
-预计 ~15h ｜ 目标硬件：**任何 SM80+**（H20 / 5060 Ti / 4090 / A100 都行；用 `mma_sm80` atom）
+预计 ~15h
+> **硬件**：🟢 5060 Ti（任何 SM80+ 都行；用 `mma_sm80` atom）
 
 ## 目标
 - 能解释 `MMA_Atom` 三层包装：PTX → `MMA_Traits` → `MMA_Atom`

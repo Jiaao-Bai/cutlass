@@ -287,6 +287,33 @@ local_partition(tensor, thr_layout, thr_idx) {
 
 典型场景：GMEM→SMEM 协作搬运，32 thread 各拿 4 fp16 形成合并访问。
 
+### O21. TiledCopy 和 TiledMMA 本质是同一个问题：线程→元素映射
+
+用户洞察：**不管是 sgemm_1 的裸 ThreadLayout、还是 sgemm_2 的 TiledCopy/TiledMMA，解决的核心问题都是 "把 0-255 这些线程 ID 映射到 (128, 8) 这块 tile 上"**。TiledCopy 和 TiledMMA 概念上是同一种东西——把 M 个 thread 映射到 N 个元素，区别只是每个 thread 执行 copy 还是 mma。
+
+验证结论：
+- 代码层面**没有共享基类**——`TiledCopy` 继承 `Copy_Atom`，`TiledMMA` 继承 `MMA_Atom`，各自独立实现
+- 但底层都用同一套 layout 代数原语（`zipped_divide`、`logical_divide`、`compose`、`right_inverse`）
+- 没合并的原因：MMA 多一个 **permutation** 步骤（硬件 lane→element 接线图）+ 用 4D 坐标 `(V,M,N,K)` 而非扁平 thr_idx
+- 唯一的代码依赖方向：`copy_atom.hpp` include `mma_atom.hpp`（`make_tiled_copy_A/B/C` 从 TiledMMA 反推兼容的 TiledCopy）
+
+裸 Layout 只解决**映射**；TiledCopy 同时解决**映射 + 指令选择**（Copy_Atom 编码了向量宽度和硬件指令类型）。
+
+### O22. Val Layout + 数据 layout 配合保证向量化连续性
+
+用户追问：`UniversalCopy<uint128_t>` 怎么保证每线程搬的 4 个 float 在显存连续？
+
+答案：**这是程序员的责任，不是框架自动推导的**。保证来自：
+
+```
+Val Layout 的方向  ×  数据 layout 在那个方向的 stride  ==  连续
+```
+
+NT 情况：gmem A 是 m-major (stride=1 in M)，Val Layout `(4,1)` 沿 M 排 → 4 个连续地址 → 可发 128-bit load。
+TN 情况：gmem A 是 k-major (stride=ldA in M)，M 方向不连续 → 退化为 `UniversalCopy<TA>` (32-bit) + Val `(1,1)`。
+
+越宽的 Copy Atom 对连续性/对齐要求越严格。选错了不会编译报错，运行时 crash 或读错数据。
+
 ### O20. SM120（5060 Ti）能力 — 不是 SM100 子集，也不是 SM80 加一点
 
 源码 cross-check 结论：**SM120 ≈ "SM90 软件栈 + fp4/fp6 块缩放 mma.sync"**，跟 SM100 是**不同分支**（不是父子）。

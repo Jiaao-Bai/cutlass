@@ -6,11 +6,19 @@
 
 ## 一、用户硬件 / 学习背景
 
-- **硬件**：日常在 **5060 Ti (SM120, Blackwell consumer)** 上学习；偶尔也有 H20 (SM90) 和 B200 (SM100/120)。
-- **目标**：手写 + 极致优化 Hopper/Blackwell GEMM、FlashAttention、Sparse MoE。
-- **W1-W4 必须在 5060 Ti 上能跑** —— scaffold 只能用 SM80 PTX (`mma_sm80` + `cp.async`)，不能用 SM90+ 独有指令（WGMMA / TMA / cluster）。
-- **W5-W18 主要在 H20**；**W19-W21 (Blackwell SM100/SM120) 可以回 5060 Ti 跑 SM120 增量**。
-- 编译命令：`cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=120 ..`（5060 Ti）/ `90` (H20) / `100a` (B200)
+- **拥有的硬件**：**5060 Ti 16GB (SM120, Blackwell consumer)** —— 日常学习主战
+- **租赁硬件**：H20 (SM90) ~$1-3/hr、B200 (SM100) ~$5-15/hr —— 只在需要 WGMMA / UMMA 真实跑通 + ncu 性能数字时短 sprint 用
+- **目标**：手写 + 极致优化 Hopper/Blackwell GEMM、FlashAttention、Sparse MoE
+
+**5060 Ti (SM120) 真实能力**（详见 O20）：
+- **能跑**：W1-W4（SM80 atom）、W6 TMA、W7 Pipeline+Cluster、W8-W11 + W12-W18 的 WarpSpec 框架（用 `MainloopSm120TmaWarpSpecialized` 代替 WGMMA mainloop）、fp4/fp6 块缩放 mma.sync 量化实验
+- **跑不了**：W5 WGMMA atom（要 H20）、W19/W20/W21 UMMA + TMEM（要 B200）、2-SM 配对 cluster（要 B200）
+
+**Stage 顺序约定（2026-05 调整）**：
+- 原 Stage 6 (W19/W20/W21) 已**打散**到 Stage 2/3/4
+- Stage 2 一次性消化 SM90 + SM100 硬件原语（W5-W7 + W19）—— "trick：UMMA 文档大量写 differs from WGMMA in X，必须先懂 WGMMA"
+- Stage 3-4 内部 **SM90 优化到底，再 SM100 迁移**（W8-W11 → W20，W12-W15 → W21），**不并行**
+- 编译命令：`cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=120 ..`（5060 Ti）/ `90` (H20) / `100a` (B200) / `120;90;100a` (跨架构通用编译)
 
 ---
 
@@ -283,6 +291,30 @@ local_partition(tensor, thr_layout, thr_idx) {
 
 典型场景：GMEM→SMEM 协作搬运，32 thread 各拿 4 fp16 形成合并访问。
 
+### O20. SM120（5060 Ti）能力 — 不是 SM100 子集，也不是 SM80 加一点
+
+源码 cross-check 结论：**SM120 ≈ "SM90 软件栈 + fp4/fp6 块缩放 mma.sync"**，跟 SM100 是**不同分支**（不是父子）。
+
+| Cap | TMA | Cluster | WarpSpec 主循环 | MMA path | fp4/fp6 + 块缩放 | UMMA + TMEM |
+|-----|-----|---------|----------------|----------|------------------|--------------|
+| SM80 | ❌ | ❌ | ❌ | mma.sync (RMEM) | ❌ | ❌ |
+| SM90 | ✅ | ✅ | ✅ | **WGMMA** (warpgroup async, RMEM) | ❌ | ❌ |
+| **SM120 (5060 Ti)** | ✅ | ✅ (SM90 风格) | ✅ | **mma.sync** (warp issue, RMEM, 新 fp4/fp6/fp8 类型) | ✅ | ❌ |
+| SM100 (B200) | ✅ | ✅ (含 2-SM 配对) | ✅ | **UMMA** (`tcgen05.mma`, 单线程 issue, TMEM) | ✅ | ✅ |
+
+源码证据：
+- `config.hpp:155-156` 启用 `CUTE_ARCH_MMA_SM120_ENABLED` + `CUTE_ARCH_TMA_SM120_ENABLED`
+- `dispatch_policy.hpp:1430` 有 `MainloopSm120TmaWarpSpecialized`（带 ClusterShape + PipelineAsyncMmaStages）—— 一等公民
+- `mma_sm120.hpp` 全是 `mma.sync` 不是 `tcgen05` —— SM120 没有 UMMA
+- `mma_sm100_umma.hpp` 才是 UMMA，包含 `2x1SM_*`（2-CTA paired cluster）专属变体
+
+**对 5060 Ti 用户的实际意义**：
+- W6 TMA / W7 Pipeline+Cluster / W8-W11 WarpSpec GEMM / W12-W18 FA & MoE 的**整个软件框架可以在 5060 Ti 完整跑通**（用 `MainloopSm120TmaWarpSpecialized` 代替 SM90 WGMMA mainloop）
+- 5060 Ti 跑不了：WGMMA atom（要 H20）、UMMA atom + TMEM（要 B200）、2-SM 配对 cluster（要 B200）
+- 5060 Ti 上独有的：fp4 / fp6 块缩放 mma.sync（量化 FA、量化 MoE 实验的现成硬件）
+
+详见 `study/README.md` 的硬件路线表。
+
 ---
 
 ## 三、Agent 这次犯的错 + 修正记录
@@ -354,6 +386,12 @@ local_partition(tensor, thr_layout, thr_idx) {
 - **错**：用户问"per-mode complement 跟直接调 complement 结果差别"，agent 第一次给的例子用 `complement(L, cosize(L))` —— L 紧凑时这是 trivial `_1:_0`，根本对比不出来
 - **正**：用户指出后改用 `complement(tile, cosize(L))` —— 把 tile 当成 L 地址空间里的一坨 layout 调 complement，得到 `(2,3):(4,16)`
 - **教训**：对比两个 API 时，参数选择要让**两边都返回有意义的结果**
+
+### E15. SM120 能力反复横跳两次
+- **错（第一次）**：声称 "SM120 ≈ SM100 减 cluster + 砍 tile"，用户怀疑后查源码发现两者是不同 MMA path
+- **错（第二次）**：改口 "SM120 没 UMMA / 只能跑 SM80 + 一点 fp4"，太悲观——漏掉了 SM120 有完整 TMA + cluster + WarpSpec mainloop
+- **正**：详见 O20。SM120 是 **"SM90 软件栈 + fp4/fp6 块缩放 mma.sync"**，跟 SM100 平级独立分支
+- **教训**：架构特性查询必须**逐项查源码** (`config.hpp` + `dispatch_policy.hpp` + 各 arch `mma_*.hpp` + `copy_*.hpp`)，不要凭"应该有 / 应该没有"猜
 
 ### E14. 然后又把 tuple tiler 偷换成 physical tile
 - **错**：上一轮修正后，agent 在 O11 里把 "tuple tiler `((2:1),(4:1))`" 跟 "physical tile `(2,4):(8,1)`" 当成同一个对象做"per-mode vs whole-tile complement"对比。两者其实是**不同空间不同对象**——前者在坐标空间是 tuple of 1D，后者在 L 地址空间是单个 rank-2 layout，需要 composition with L 才能桥接

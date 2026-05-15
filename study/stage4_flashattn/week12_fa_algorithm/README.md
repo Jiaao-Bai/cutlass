@@ -1,6 +1,7 @@
 # Week 12 — FA 算法理解
 
-预计 ~15h ｜ 目标硬件：CPU 思考 + 任意 GPU 跑 numpy 参考
+预计 ~15h
+> **硬件**：🟢 5060 Ti（CPU 推导 + numpy 参考 + Python DSL 实验，跟具体卡无关）
 
 ## 目标
 - 推得动 online softmax 数学（不看公式能写出 m_i / l_i 的更新规则）

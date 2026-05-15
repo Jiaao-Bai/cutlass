@@ -1,6 +1,7 @@
 # Week 7 — Hardware Barrier + Thread Block Cluster
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti 完整可跑（SM120 沿用 SM90 cluster：`cluster_sm90.hpp` 在 SM120 上可用，只是 cluster size 上限可能比 H100 / B200 小）
 
 ## 目标
 - 能解释 `mbarrier` 比 `__syncthreads` 强在哪

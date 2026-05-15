@@ -10,15 +10,28 @@
 
 ## 路线图
 
-| 阶段 | 内容 | 周 | 预计时长 | 目录 |
-|------|------|----|----------|------|
+| 阶段 | 内容 | 周（含 SM 顺序）| 预计时长 | 目录 |
+|------|------|------|----------|------|
 | Stage 1 | CuTe 张量代数 | W1–4 | 60h | [stage1_cute_algebra/](stage1_cute_algebra/) |
-| Stage 2 | SM90 硬件原语（WGMMA / TMA / Pipeline） | W5–7 | 45h | [stage2_sm90_primitives/](stage2_sm90_primitives/) |
-| Stage 3 | 手写 Hopper GEMM | W8–11 | 60h | [stage3_hopper_gemm/](stage3_hopper_gemm/) |
-| Stage 4 | FlashAttention | W12–15 | 60h | [stage4_flashattn/](stage4_flashattn/) |
+| Stage 2 | 硬件原语（SM90 → SM100 增量）| W5–7 (SM90)、W19 (SM100) | 60h | [stage2_primitives/](stage2_primitives/) |
+| Stage 3 | 手写 GEMM（SM90 → SM100） | W8–11 (Hopper)、W20 (Blackwell) | 75h | [stage3_gemm/](stage3_gemm/) |
+| Stage 4 | FlashAttention（SM90 → SM100）| W12–15 (Hopper)、W21 (Blackwell) | 75h | [stage4_flashattn/](stage4_flashattn/) |
 | Stage 5 | Sparse MoE | W16–18 | 45h | [stage5_moe/](stage5_moe/) |
-| Stage 6 | B200（SM100）增量 | W19–21 | 45h | [stage6_b200_increment/](stage6_b200_increment/) |
 | Stage 7 | 极致调优 | 持续 | — | [stage7_tuning/](stage7_tuning/) |
+
+**Stage 顺序约定**（2026-05 调整）：
+- 原 Stage 6（W19/W20/W21）打散到 Stage 2/3/4。**Stage 内部 SM 串行**：先把 SM90 优化做透，再 SM100 迁移
+- Stage 2 一次性消化 SM90 + SM100 硬件原语（避免后续 SM100 还要重新捡 SM90 细节）
+
+**硬件优先级**（每周 README 标题下有详细标记）：
+
+| 标签 | 含义 | 覆盖范围 |
+|------|------|----------|
+| 🟢 **5060 Ti 主战**（你拥有的卡）| 完全在本地跑 | W1-W4 全部；W6/W7（TMA + SM90 风格 cluster）；Stage 3-5 的 WarpSpec 主循环（用 SM120 mainloop 跑）；FP4 量化实验 |
+| 🟡 **租 H20 实测**（~$1-3/hr）| 跑真 WGMMA | W5（WGMMA PTX）；Stage 3-4 的 WGMMA 性能数字 |
+| 🔴 **租 B200 实测**（~$5-15/hr）| 跑 UMMA + TMEM | W19（UMMA primer）；W20/W21（SM100 性能数字）|
+
+> **关键事实**：5060 Ti (SM120) 不是"残血 SM100"——SM120 是 **SM90 软件栈 + fp4/fp6 块缩放 mma.sync**，**没有 UMMA / TMEM**，但**继承了完整 TMA + cluster + WarpSpec**。详见 [stage1_cute_algebra/THINKING.md O20](stage1_cute_algebra/THINKING.md)。
 
 进度跟踪：[PROGRESS.md](PROGRESS.md)
 

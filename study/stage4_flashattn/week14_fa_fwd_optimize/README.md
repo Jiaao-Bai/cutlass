@@ -1,6 +1,8 @@
 # Week 14 — FA Forward v2：优化
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（继续 SM120 mainloop 上优化 softmax/causal/pipeline）｜ 🟡 H20（真 WGMMA 性能 vs 88_hopper_fmha 基准）  
+> 🟢 顺带可在 5060 Ti 试 **FP4/FP6 量化 FA**（`SM120_*_TN<e2m1, e2m1>` atom）
 
 ## 目标
 - v2 性能 ≥ 80% `examples/88_hopper_fmha`

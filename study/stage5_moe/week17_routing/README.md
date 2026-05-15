@@ -1,6 +1,7 @@
 # Week 17 — Token Routing + Permute
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（routing 是 CUDA core 逻辑，与 tensor core 架构无关，本地完整可跑）
 
 ## 目标
 - 看懂 router 的 softmax + topk

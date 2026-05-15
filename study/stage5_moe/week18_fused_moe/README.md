@@ -1,6 +1,7 @@
 # Week 18 — Fused MoE
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（用 SM120 array TMA + WarpSpec 跑 fused MoE 框架；FP4 量化 expert 也能在本地试）｜ 🟡 H20（WGMMA 实测 production 性能数字）
 
 ## 目标
 - 完成 Stage 5 CHECKPOINT：end-to-end MoE forward

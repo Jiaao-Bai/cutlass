@@ -1,6 +1,8 @@
 # Week 9 — 手写 WarpSpec GEMM v1
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（用 `MainloopSm120TmaWarpSpecialized` 在本地跑完整 TMA + WarpSpec + Cluster 框架）｜ 🟡 H20（替换 atom 为 WGMMA 后实测真 WGMMA 性能数字）  
+> **关键**：5060 Ti 上你**真能跑** WarpSpec mainloop 的所有架构特性，只是 MMA atom 换成 mma.sync（SM120）而非 WGMMA
 
 ## 目标
 - 自己组装 WarpSpec GEMM kernel，**不用** `CollectiveBuilder`

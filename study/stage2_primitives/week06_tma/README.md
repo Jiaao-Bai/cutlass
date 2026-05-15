@@ -1,6 +1,7 @@
 # Week 6 — TMA (Tensor Memory Accelerator)
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti 完整可跑（SM120 原生支持 TMA，跟 SM90 共享 `CUTE_ARCH_TMA_SM120_ENABLED` 代码路径）
 
 ## 目标
 - 能在 host 构造 TMA descriptor，理解 5D tensor 的 box / global stride / element stride

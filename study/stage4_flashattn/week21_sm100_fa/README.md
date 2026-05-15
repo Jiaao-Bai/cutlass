@@ -1,6 +1,8 @@
 # Week 21 — SM100 FA
 
-预计 ~15h ｜ 目标硬件：B200
+预计 ~15h
+> **硬件**：🟢 5060 Ti（读源码 + 静态编译 `sm_100a`）｜ 🔴 B200（实测 UMMA + TMEM 的 FA 性能数字）  
+> 本周承接 W13-W15 的 SM90 FA——核心改动是 MMA atom WGMMA → UMMA，accumulator RMEM → TMEM
 
 ## 目标
 - 跑通 `examples/python/CuTeDSL/blackwell/fmha.py` 与 `fmha_bwd.py`

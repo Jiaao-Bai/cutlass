@@ -1,6 +1,8 @@
 # Week 15 — FA Backward
 
-预计 ~15h ｜ 目标硬件：H20（B200 backward 留到 Stage 6）
+预计 ~15h
+> **硬件**：🟢 5060 Ti（SM120 mainloop 上跑 FA bwd 正确性）｜ 🟡 H20（WGMMA 实测）  
+> B200 实测延到 W21（同 Stage，下一周）
 
 ## 目标
 - 看懂 FA bwd 的 dQ / dK / dV 数学

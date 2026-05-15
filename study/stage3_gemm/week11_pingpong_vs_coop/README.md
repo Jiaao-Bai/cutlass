@@ -1,6 +1,7 @@
 # Week 11 — Pingpong vs Cooperative
 
-预计 ~15h ｜ 目标硬件：H20
+预计 ~15h
+> **硬件**：🟢 5060 Ti（两种 schedule 在 SM120 mainloop 上对照实验）｜ 🟡 H20（在 WGMMA 上验证 schedule 效果的真数字）
 
 ## 目标
 - 写出 Pingpong 与 Cooperative 两个变体，理解骨架差异

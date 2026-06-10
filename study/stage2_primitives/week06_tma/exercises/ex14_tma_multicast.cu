@@ -7,8 +7,7 @@
  *   2. 看 make_tma_copy 的 multicast 版（带 cluster layout）和 tma_partition 的 multicast 参数
  *   3. 验证 cluster 内每个 CTA 都拿到同一份数据
  *
- * 硬件：🟢 5060 Ti(SM120) 可跑，但 cluster size 上限可能比 H100/B200 小。
- *   本练习用 cluster=2（最小有意义的 multicast），SM120 应支持。
+ * 硬件：SM90+，本练习用 cluster=2（最小有意义的 multicast）。
  *   ⚠️ 若 launch 报 cluster 不支持，把 CLUSTER_N 调回 1（退化成普通 TMA，multicast 失效）。
  *
  * multicast vs 普通 TMA 的关键差别：
@@ -121,7 +120,7 @@ int main() {
       params, kernel, tma, mA, dOut.data().get(), smem_layout);
   CUTE_CHECK_LAST();
   if (st != cutlass::Status::kSuccess) {
-    printf("cluster launch 失败 —— 可能是 SM120 不支持 cluster=%d，把 CLUSTER_N 调成 1 再试。\n", CLUSTER_N);
+    printf("cluster launch 失败 —— 当前卡不支持 cluster=%d，把 CLUSTER_N 调成 1 再试。\n", CLUSTER_N);
     return 0;
   }
 

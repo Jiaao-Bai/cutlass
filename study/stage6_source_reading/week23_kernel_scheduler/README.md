@@ -1,7 +1,7 @@
 # Week 23 — Kernel + Scheduler 精读
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，纯读源码 + 写笔记）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）
+> **硬件**：B200（SM100）
 
 ## 目标
 - 逐行读完 SM100 WarpSpec kernel，画出 1-SM / 2-SM UMMA 的时序图

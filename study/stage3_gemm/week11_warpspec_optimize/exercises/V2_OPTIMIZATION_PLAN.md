@@ -17,7 +17,6 @@
 - **smem 占用公式**：`STAGES × (BLK_M × BLK_K + BLK_N × BLK_K) × sizeof(T) + 2 × STAGES × 8`
   - BLK 都是 128 × 64 fp16 = 16KB；STAGES=6 时 A+B = 6×32KB = 192KB
   - B200(SM100) 单 block 最大 ~228KB+/TBD → 还能放下，但接近上限
-  - SM120 单 block 最大 ~99KB → **STAGES=4 已经超** → 5060 Ti 上 v2 这步最大只能到 STAGES=2 或 3
 - **ncu 验证**：`smsp__inst_executed_pipe_tensor_op_hmma` 占比上升，`dram__throughput.avg.pct_of_peak_sustained_elapsed` 下降意味着 TMA 已经被吃满
 - **何时不再增益**：当 producer 的 TMA bandwidth 已经把 dram 打满，再加 stage 也不会更快
 
@@ -25,8 +24,8 @@
 
 - **改哪里**：BLK_N 从 128 改到 256；MMA atom 从 `SM100_MMA_F16BF16_SS<..., 128, 128, ...>` 换成 `SM100_MMA_F16BF16_SS<..., 128, 256, ...>`（UMMA atom 改 N）
 - **为什么 N 大效率高**：单条 UMMA（`tcgen05.mma`）算更多 FMA，指令发射开销摊得更薄；TMEM 累加器列数也会变（N 越大 accumulator 越多）
-- **风险**：N=256 时 accumulator 占更多 TMEM 列。注意：SM100 累加器在 TMEM 不占线程寄存器，所以"逼近寄存器上限触发 spill"这条风险在 SM100 上其实变小；主要看 TMEM 列容量是否够用。（5060 Ti/SM120 退化路径用 RMEM 累加器，那条路径仍要看寄存器上限）
-- **ncu 验证**：`smsp__sass_thread_inst_executed_op_hmma_pred_on` 占比上升；SM120 退化路径下 `launch__registers_per_thread` 不要超 240
+- **风险**：N=256 时 accumulator 占更多 TMEM 列。注意：SM100 累加器在 TMEM 不占线程寄存器，所以"逼近寄存器上限触发 spill"这条风险在 SM100 上其实变小；主要看 TMEM 列容量是否够用。
+- **ncu 验证**：`smsp__sass_thread_inst_executed_op_hmma_pred_on` 占比上升
 
 ### 4. ClusterShape `<2,1,1>` 启用 multicast（+10%）
 
@@ -34,7 +33,6 @@
 - **谁多播**：M 方向的 2 个 CTA 共享同一个 B（B 在 N 方向被复用）→ 多播 **B**；A 各 CTA 自己读
 - **大 K vs 小 K**：K 越大，B 的总流量越大，multicast 省得越多 → 大 K 收益大
 - **ncu 验证**：`dram__bytes_read` 应该约为非 multicast 的 1/2 (针对 B 的部分)
-- **5060 Ti 限制**：SM120 cluster size 上限 < SM100，2x1 大概率支持，4x1 可能失败 → README 已经标注
 
 ### 5. Persistent scheduler（+5%）
 

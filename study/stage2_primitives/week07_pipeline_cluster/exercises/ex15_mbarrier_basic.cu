@@ -6,7 +6,7 @@
  *   2. 亲眼看到 phase bit 在「凑齐 arrive 数」后翻转，这是 mbarrier 避免 ABA 的核心
  *   3. 对比 __syncthreads：mbarrier 是「带 phase 的可复用栅栏」，能区分第 N 次和第 N+1 次同步
  *
- * 硬件：🟢 5060 Ti(SM120) 可跑（mbarrier 是 SM90+ 通用原语）。
+ * 硬件：任意 SM90+ 卡可跑（mbarrier 是 SM90+ 通用原语）。
  *
  * 机制：
  *   init(bar, count) 设定「需要 count 次 arrive 才翻 phase」。

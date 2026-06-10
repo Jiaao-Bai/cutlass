@@ -22,7 +22,7 @@ baseline（v1，未优化）：M=N=K=4096 FP16
 ## 步骤 2：pipeline depth (STAGES 2 → 4)
 
 - diff 行号：v1 第 ___ 行（`STAGES = 2`）→ v2 第 ___ 行（`STAGES = 4`）
-- smem 占用计算：__________ KB（应 ≤ ~228KB+/TBD on B200(SM100)，≤ ~99KB on 5060 Ti(SM120)）
+- smem 占用计算：__________ KB（应 ≤ ~228KB on B200(SM100)）
 - ncu before / after：
   - `dram__throughput.avg.pct_of_peak_sustained_elapsed`：______ → ______
   - `smsp__inst_executed_pipe_tensor_op_hmma`：______ → ______

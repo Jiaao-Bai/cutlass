@@ -1,12 +1,13 @@
 # Stage 3 CHECKPOINT — 1-SM UMMA vs 2-SM UMMA 性能报告
 
 > 跑 `bash bench.sh` 把表填上，然后写"为什么"分析。Stage 3 CHECKPOINT 要求（B200/SM100 主线）：
-> - M=N=K=4096 ≥ 70% cuBLAS（B200 FP16 cuBLAS 峰值约 2200+ TFLOPS，绝对数字按实测填 B200 量级或 TBD）
-> - M=N=K=8192 ≥ 75% cuBLAS（同上，TBD）
+> - M=N=K=4096 ≥ 80% cuBLAS（B200 FP16 cuBLAS 峰值约 2200+ TFLOPS，按实测填）
+> - M=N=K=8192 ≥ 85% cuBLAS
+> - ncu `sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed` ≥ 70%（总目标口径）
 
 ## 硬件 / 编译信息
 
-- GPU：______________（B200 / 5060 Ti）
+- GPU：B200
 - nvcc 版本：______
 - CUTLASS commit：______
 - cuBLAS 版本：______
@@ -31,7 +32,7 @@
 
 ### 4096 cube
 - 谁赢：________
-- 距离 70% 目标：________
+- 距离 80% cuBLAS / 70% TC 利用率目标：________
 
 ### 128 × 8192 × 8192（decode-like）
 - 谁赢：________
@@ -46,11 +47,11 @@
 
 ### 16 × 8192 × 4096（极短 M）
 - 谁赢：________
-- ⚠️ 这个 shape 应该哪个都不及格 70% —— 写下你诊断的 roofline 瓶颈
+- ⚠️ 这个 shape 应该哪个都不及格 —— 写下你诊断的 roofline 瓶颈
 
 ## CHECKPOINT 30% 损失诊断（4096 cube 这个 shape）
 
-用 ncu Roofline 论证你比 cuBLAS 慢的 30% 来自哪里：
+用 ncu Roofline 论证你比 cuBLAS 慢的部分来自哪里：
 
 - compute bound or memory bound：________
 - 主要损失来源（选 1-3 项）：
@@ -66,5 +67,4 @@
 
 1. 1-SM UMMA（`cta_group::1`）适合的 workload 形状：________
 2. 2-SM UMMA（`cta_group::2`）适合的 workload 形状：________
-3. 5060 Ti(SM120) vs B200(SM100) 上同一份代码性能差距 ≈ ____ × —— 主要差距来自 mma.sync(RMEM, 无 2-SM) vs UMMA(TMEM, tcgen05.mma) 的算力差
 4. 距离"手写并极致优化 GEMM" 还差什么：________（Stage 7 调优会回到这）

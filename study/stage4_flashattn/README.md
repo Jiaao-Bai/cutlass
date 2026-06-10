@@ -1,35 +1,32 @@
-# Stage 4 — FlashAttention（SM100 主线 → SM120 验证）
+# Stage 4 — FlashAttention（SM100）
 
-预计 5 周（W14–W17 SM100 Blackwell + W18 SM120 验证），约 75h。
-
-> **硬件**：🟢 5060 Ti（SM120，本地跑 sm120 路径验证；FP4/FP6 量化 FA 实验也可在本地）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）
+预计 5 周（W14–W17 FA 主线 + W18 GQA/decode 变体），约 75h。硬件：B200（SM100）。
 
 ## 阶段目标
 
 - 推得动 online softmax 的数学（Dao et al. 那张表）
 - 自写 FA forward kernel（SM100 UMMA + TMEM），跑过正确性 + 达到 `77_blackwell_fmha` 的 ≥ 80%
 - 能写 FA backward 的 dQ/dK/dV 流程
-- 能把 SM100 FA 在 SM120（5060 Ti）上验证 + decode/GQA 变体
-- 加分项：在 5060 Ti 上做 fp4/fp6 量化 FA 实验
+- 能写 GQA / decode 低延迟变体——LLM 推理的真实 attention 形态
 
-> 课程顺序：**SM100 FA 优化做透（W14-W17），再 SM120 验证 + decode/GQA 变体（W18）**。FA mental model 比 GEMM 更细（softmax / causal / pipeline），SM120 验证时只把 UMMA→mma.sync、TMEM→RMEM 退化即可。
+> 本阶段产出（FA fwd/bwd + GQA/decode）直接构成开源算子库的 attention 家族。
 
 ## 周次
 
-| 周 | 标题 | 主战硬件 | 输出 |
-|----|------|---------|------|
-| W14 | [FA 算法](week14_fa_algorithm/) | 🟢 5060 Ti / CPU | numpy/Python 写一份 online softmax 参考 |
-| W15 | [FA fwd writeup](week15_fa_fwd_writeup/) | 🔴 B200 UMMA+TMEM + 🟢 5060 Ti 验证 | `ex_fa_fwd_v1.cu` 正确性通过 |
-| W16 | [FA fwd optimize](week16_fa_fwd_optimize/) | 🔴 B200 | v2 ≥ 80% 77_blackwell_fmha；FP4 实验可选 |
-| W17 | [FA bwd](week17_fa_bwd/) | 🔴 B200 + 🟢 5060 Ti | dQ/dK/dV 正确性 |
-| W18 | [SM120 FA 验证 + GQA](week18_sm100_fa/) | 🟢 5060 Ti 实测 + 🔴 B200 对照 | SM120 FA + decode/GQA 变体 |
+| 周 | 标题 | 输出 |
+|----|------|------|
+| W14 | [FA 算法](week14_fa_algorithm/) | numpy/Python 写一份 online softmax 参考 |
+| W15 | [FA fwd writeup](week15_fa_fwd_writeup/) | `ex_fa_fwd_v1.cu` 正确性通过 |
+| W16 | [FA fwd optimize](week16_fa_fwd_optimize/) | v2 ≥ 80% 77_blackwell_fmha |
+| W17 | [FA bwd](week17_fa_bwd/) | dQ/dK/dV 正确性 |
+| W18 | [GQA / decode 变体](week18_sm100_fa/) | GQA + decode 低延迟变体，B200 实测 |
 
 ## CHECKPOINT — 进入 Stage 5 前必过
 
 ### 综合练习
 - `ex_fa_fwd_v2.cu` 在 B200 上：
   - shape `(B=4, H=32, S=4096, d=128)`，causal=True，FP16
-  - 性能 ≥ 80% `examples/77_blackwell_fmha`
+  - 性能 ≥ 80% `examples/77_blackwell_fmha`（≈ 70% tensor core 利用率口径）
   - 通过 PyTorch SDPA 正确性比对（rtol=1e-2）
 
 ### 口答 7 题

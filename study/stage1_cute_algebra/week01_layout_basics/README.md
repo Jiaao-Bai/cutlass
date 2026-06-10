@@ -1,7 +1,7 @@
 # Week 1 — Layout basics
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（CPU 思考 + 任意 GPU `print` 验证）
+> **硬件**：无要求（CPU 纸笔推导 + 任意 GPU `print` 验证）
 
 ## 目标
 - 能用纸笔算出任意 `Layout` 的 `crd2idx`

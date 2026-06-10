@@ -8,7 +8,7 @@
  *   4. 体会 TMEM 与 __shared__ 的本质差别：TMEM 是「运行期分配的列资源」，
  *      地址是 alloc 返回的 base（编译期不知道），不像 __shared__ 是编译期固定偏移。
  *
- * 硬件：🔴 仅 B200(sm_100a) 可跑。5060 Ti(SM120) 无 TMEM —— 本程序在非 SM100 上 return 0。
+ * 硬件：仅 B200(sm_100a) 可跑；非 SM100 上 return 0。
  *   静态看 PTX：nvcc -arch=sm_100a -ptx ex27_tmem_alloc.cu && grep "tcgen05.alloc\|tcgen05.ld\|tcgen05.st" *.ptx
  *
  * 自检（README Q1/Q2/Q5）：

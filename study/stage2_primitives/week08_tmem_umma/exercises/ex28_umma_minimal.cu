@@ -12,7 +12,7 @@
  *
  * MMA：tcgen05.mma.f16（F16xF16=F32），单条做 128x256x16；K=64 => 内部 4 次累加。
  *
- * 硬件：🔴 仅 B200(sm_100a)。5060 Ti(SM120) 无 UMMA/TMEM —— 非 SM100 上 return 0。
+ * 硬件：仅 B200(sm_100a)；非 SM100 上 return 0。
  *   静态看 PTX：nvcc -arch=sm_100a -ptx ex28_umma_minimal.cu && grep "tcgen05.mma\|tcgen05.ld" *.ptx
  **************************************************************************************************/
 #include <cstdio>

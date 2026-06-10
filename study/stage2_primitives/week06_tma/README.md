@@ -1,12 +1,11 @@
 # Week 6 — TMA (Tensor Memory Accelerator)
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti 完整可跑（SM120 原生支持 TMA，跟 SM90 共享 `CUTE_ARCH_TMA_SM120_ENABLED` 代码路径）
+> **硬件**：B200（SM100）
 
 > **认知锚点**（对照 [`sm90_hopper_overview.md`](../sm90_hopper_overview.md)）：
 > TMA = **分化定律 · 一.1**（从 LSU 分化出的独立搬运引擎）+ **双主轴交汇点**（一条指令搬一个 tile = Scale Up；异步执行 = Async）。
 > 配套的 **B1 mbarrier transaction count**（等"字节到齐"而非"线程到齐"）和 **B3 Proxy Fence**（`fence.proxy.async`，保证 TMA 写完后跨 proxy 可见）也在本周。
-> 对照 [`sm120_fake_blackwell_overview.md`](../sm120_fake_blackwell_overview.md)：TMA 是消费卡**保留**的（已成通用底座，卷积/attention/推理/图形都吃）—— 这就是为什么本周 5060 Ti 完全本地可跑，而 W5/W8 不行。
 
 ## 目标
 - 能在 host 构造 TMA descriptor，理解 5D tensor 的 box / global stride / element stride

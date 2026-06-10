@@ -1,8 +1,7 @@
 # Week 17 — FA Backward
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，本地跑 sm120 路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）  
-> SM120 验证延到 W18（同 Stage，下一周）
+> **硬件**：B200（SM100）
 
 ## 目标
 - 看懂 FA bwd 的 dQ / dK / dV 数学

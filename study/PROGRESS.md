@@ -2,10 +2,8 @@
 
 格式：每完成一周，在对应行打勾，记关键产出和 ncu 指标。
 
-> **当前位置(2026-06-10)**：W9 ☑ 完成，下一站 **W10 手搓 SM100 GEMM v1**。
-> **重大调整**：W9 之后全计划已转 **Blackwell-only**（SM100 主线 / SM120 验证，删 SM90）——见各 README + `cutlass_reading_strategy.md §0`。
-> **本轮新增思考**：THINKING **O33-O40**（五层=库工程非性能/手写要什么；kernel-collective-pipeline 精确分工；L2L3 嵌套for；文件名 token；5类warp角色；C是输入非结果；tile-based编程+SM120取舍；FA是英伟达形状的算子）。
-> W10 README 已重设计为"纯写"（零件 Stage1-2+W9 全学过，不重读）。
+> **当前位置(2026-06-10)**：W9 ☑ 完成，下一站 **W10 手搓 SM100 GEMM v1**（W10 README 是"纯写"模式：零件 Stage1-2+W9 全学过，不重读）。
+> **总目标(2026-06-10 更新)**：能在 SM100 上写出 **tensor core 利用率 ≥70%** 的任意 CuTe kernel（GEMM/FA/MoE 是路径不是终点）；终点产物 = 独立开源仓库（CuTe LLM 算子库），度量口径见 `README.md` 开头。课程已 **SM100-only**（SM120 / SM90 主线内容全部删除）。
 
 ## 总览
 
@@ -16,8 +14,8 @@
 | 1 | W3 — TiledMMA | ☑ | `ex07_tiled_mma_layout.cu`（输出验证通过：4 warp 起点 + V 维 stride 接 atom 接线）+ ex08 跳过（概念已懂：循环顺序影响 reg liveness）+ 自检 Q3/Q5 已懂；Q1/Q2/Q4 跳过（实现细节，Stage 6 再补）| 2026-05-18 |
 | 1 | W4 — TiledCopy | ⏭ skip (first-pass) | 概念跟 W3 镜像 (THINKING O21)；原子指令 (cp.async/ldmatrix/pipeline) + ex09/ex10 + CHECKPOINT 一起推后到 Stage 2 之后补。第一遍 Stage 2 直接学 TMA/wgmma，cp.async/ldmatrix 大部分被新硬件抽走 | (待补) |
 | 1 | **CHECKPOINT** | ☐ | sgemm_sm80 变体 + 5 道口答 | |
-| 2 | W5 — WGMMA (SM90) | ◧ 读+ex12 done | 概念沉淀进 `THINKING.md` O23-O27 + O3 扩展（四件套/proxy/SS-RS/descriptor/swizzle↔bank line/TV 退化/三层解耦）；ex12 产出在 `week05_wgmma/ex12_findings.md`；自检 5 题全答 | 2026-06-01（ex11 实跑等 H20）|
-| 2 | W6 — TMA (SM90/SM100/SM120 共用) | ◑ 核心过完 | **加速模式**：只啃核心 20%。读①`0z_tma_tensors.md` 通译 + TMA 核心机制（descriptor/mbarrier transaction/proxy fence/make_tma_copy/kernel 模板）已过；自检 5 题全答 | 2026-06-02 |
+| 2 | W5 — WGMMA (SM90) | ◧ 读+ex12 done | 概念沉淀进 `THINKING.md` O23-O27 + O3 扩展（四件套/proxy/SS-RS/descriptor/swizzle↔bank line/TV 退化/三层解耦）；ex12 产出在 `week05_wgmma/ex12_findings.md`；自检 5 题全答 | 2026-06-01（ex11 实跑取消：Blackwell-only 后不再租 SM90 硬件，WGMMA 只作 UMMA 概念地基）|
+| 2 | W6 — TMA (SM90/SM100 共用) | ◑ 核心过完 | **加速模式**：只啃核心 20%。读①`0z_tma_tensors.md` 通译 + TMA 核心机制（descriptor/mbarrier transaction/proxy fence/make_tma_copy/kernel 模板）已过；自检 5 题全答 | 2026-06-02 |
 | 2 | W7 — Pipeline + Cluster (SM90) | ◑ 核心过完 | 加速模式：mbarrier vs syncthreads / PipelineState(index+phase 防 ABA) / 4 步协议 / warp specialization+setmaxnreg / cluster+DSMEM 核心已过；自检 5 题全答；概念进 THINKING O30 | 2026-06-02 |
 | 2 | W8 — TMEM + UMMA (SM100 增量) | ◑ 核心过完 | 加速模式：UMMA vs WGMMA(单线程发射/累加器 TMEM)、TMEM alloc+ld/st、2-SM UMMA(cluster=2 结构必需)、FP4/MX、四层模型已过；概念进 THINKING O31。**Stage 2 收口** | 2026-06-02 |
 | 2 | **CHECKPOINT** | ☐ | minimal warpspec ping-pong 玩具 + minimal UMMA toy | |
@@ -25,39 +23,33 @@
 | 3 | W10 — WarpSpec writeup (SM100) | ☐ | | |
 | 3 | W11 — WarpSpec optimize (SM100) | ☐ | | |
 | 3 | W12 — 1-SM vs 2-SM UMMA (SM100) | ☐ | | |
-| 3 | W13 — SM100→SM120 移植 | ☐ | | |
-| 3 | **CHECKPOINT** | ☐ | SM100 GEMM ≥ 70% cuBLAS（B200）+ SM120 GEMM 在 5060 Ti 上跑通 | |
+| 3 | W13 — Blockscaled 量化 GEMM (NVFP4/FP8) | ☐ | | |
+| 3 | **CHECKPOINT** | ☐ | SM100 GEMM ≥ 80% cuBLAS（≈70% TC 利用率，B200）| |
 | 4 | W14 — FA 算法 | ☐ | | |
 | 4 | W15 — FA fwd writeup (SM100) | ☐ | | |
 | 4 | W16 — FA fwd optimize (SM100) | ☐ | | |
 | 4 | W17 — FA bwd (SM100) | ☐ | | |
-| 4 | W18 — SM120 FA 验证 + GQA | ☐ | | |
-| 4 | **CHECKPOINT** | ☐ | SM100 FA fwd ≥ 80% 77_blackwell_fmha + SM120 FA 在 5060 Ti 上跑通 | |
+| 4 | W18 — FA 变体：GQA / decode | ☐ | | |
+| 4 | **CHECKPOINT** | ☐ | SM100 FA fwd ≥ 80% 77_blackwell_fmha（B200）| |
 | 5 | W19 — Grouped GEMM | ☐ | | |
 | 5 | W20 — Routing | ☐ | | |
 | 5 | W21 — Fused MoE | ☐ | | |
-| 5 | **CHECKPOINT** | ☐ | end-to-end MoE forward 正确（fp16 / 可选 fp4 量化）| |
+| 5 | **CHECKPOINT** | ☐ | end-to-end MoE forward 正确（fp16）+ grouped GEMM 部分 TC 利用率 ≥70% | |
 | 6 | W22 — Pipeline + Collective 精读 | ☐ | | |
 | 6 | W23 — Kernel + Scheduler 精读 | ☐ | | |
-| 6 | W24 — EVT + 架构对比 | ☐ | | |
-| 6 | **CHECKPOINT** | ☐ | 架构图 + 双架构 cheat sheet（SM100/SM120）+ 设计决策笔记 | |
-| 7 | 持续调优 | ☐ | | |
+| 6 | W24 — EVT + kernel pattern 总结 | ☐ | | |
+| 6 | **CHECKPOINT** | ☐ | 架构图 + SM100 cheat sheet + 设计决策笔记 + 开源库 kernel pattern 清单 | |
+| 7 | 持续调优 + 开放题 | ☐ | 任选一个计划外 tensor core 算子（如 conv / 量化 attention），从零写到 ≥70% TC 利用率 | |
 
 ---
 
-## ncu 关键指标基线（H20）
-
-每跑通一个练习，就来这里记一行。便于横向对比。
-
-| 练习 | M/N/K (or shape) | TFLOPS | sm__throughput | dram BW (GB/s) | wgmma 指令数 | 备注 |
-|------|------------------|--------|----------------|----------------|--------------|------|
-| `ex06_hgemm_naive` (W2) | 256/256/128 | (待测) | | | 0 (no tensor core) | 单线程一元素，仅做正确性 baseline |
-| | | | | | | |
-
 ## ncu 关键指标基线（B200）
 
-| 练习 | M/N/K | TFLOPS | sm__throughput | dram BW (GB/s) | umma 指令数 | tmem 占用 | 备注 |
-|------|-------|--------|----------------|----------------|--------------|----------|------|
+每跑通一个练习，就来这里记一行。便于横向对比。**TC util% = `sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed`**（总目标口径）。
+
+| 练习 | M/N/K (or shape) | TFLOPS | TC util% | sm__throughput | dram BW (GB/s) | tmem 占用 | 备注 |
+|------|------------------|--------|----------|----------------|----------------|----------|------|
+| `ex06_hgemm_naive` (W2) | 256/256/128 | (待测) | 0 | | | — | 单线程一元素，无 tensor core，仅正确性 baseline |
 | | | | | | | | |
 
 ---

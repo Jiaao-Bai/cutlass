@@ -21,7 +21,7 @@
  *       full[s]  : producer 填好 buffer s 后 arrive；consumer 等它再读（transaction barrier）
  *       empty[s] : consumer 用完 buffer s 后 arrive；producer 等它再覆写
  *
- * 硬件：🟢 5060 Ti(SM120) 可跑（TMA + mbarrier 都支持）。
+ * 硬件：任意 SM90+ 卡可跑（TMA + mbarrier）。
  *
  * 跑：
  *   ./study_stage2_w07_ex_warpspec_pingpong_toy

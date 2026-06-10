@@ -13,10 +13,10 @@
  *   mma atom = SM90_64x64x16_F16F16F16_SS（M64 N64 K16，SS 模式两个操作数都在 smem）
  *   K=64 / atom-K=16 => cute::gemm 内部自动发 4 条 wgmma
  *
- * 硬件：🟡 必须 Hopper(sm_90a)。5060 Ti(SM120) 没有 WGMMA，本程序在非 Hopper 上直接 return 0。
+ * 硬件：必须 Hopper(sm_90a)；非 Hopper 上直接 return 0（本练习仅静态编译，不实跑）。
  *   静态编译看 PTX：nvcc -arch=sm_90a -ptx ex11_wgmma_minimal.cu，grep wgmma.mma_async
  *
- * 跑（在 H20 上）：
+ * 跑（需 SM90 硬件；课程 SM100-only，仅作参考）：
  *   ./study_stage2_w05_ex11_wgmma_minimal
  *   期望：max abs error < 1e-2（fp16 累加 fp16，单 tile 误差很小）
  **************************************************************************************************/

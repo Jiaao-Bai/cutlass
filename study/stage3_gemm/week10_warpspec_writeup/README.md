@@ -1,7 +1,7 @@
 # Week 10 — 手写 WarpSpec GEMM v1（SM100 UMMA + TMEM）
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，本地跑退化路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）
+> **硬件**：B200（SM100）
 
 ## 目标
 - 不用 `CollectiveBuilder`，自己组装一个 WarpSpec GEMM kernel
@@ -63,9 +63,6 @@ cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=100a
 make study_stage3_w10_ex_warpspec_gemm_v1 -j
 ./study_stage3_w10_ex_warpspec_gemm_v1 512 512 512    # 期望 PASSED
 ./study_stage3_w10_ex_warpspec_gemm_v1 4096 4096 4096
-
-# 5060 Ti(SM120，退化路径：mma.sync + RMEM)
-cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=120a
 ```
 
 ## 自检

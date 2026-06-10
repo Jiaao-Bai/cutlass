@@ -1,6 +1,13 @@
 # CuTe + Blackwell 学习计划
 
-**目标**：在 B200（SM100，主线）和 5060 Ti（SM120，本地验证）上手写并极致优化 GEMM / FlashAttention / Sparse MoE。
+**目标**：能在 SM100（B200）上写出 **tensor core 利用率 ≥ 70%** 的任意 CuTe kernel——GEMM / FlashAttention / Sparse MoE 是学习路径，**不是终点**。
+
+**终点产物**：一个独立开源仓库——把 `include/cute/` 搬出去作为依赖，基于 CuTe 手写主流 LLM 算子的 tensor core 实现（dense GEMM、量化 GEMM、FA fwd/bwd、GQA/decode attention、MoE grouped GEMM 等）。本课程每个 stage 的产出 kernel 都是该仓库的种子代码。
+
+**"利用率 70%" 的度量口径**（统一标准，避免各 stage 各说各话）：
+- 绝对口径：`ncu` 指标 `sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed` ≥ 70%，或等价地 实测 TFLOPS ÷ 该 dtype 硬件峰值 ≥ 70%
+- 相对口径（日常用）：≥ 80% cuBLAS / 官方 example——cuBLAS 大形状约 85-90% 峰值，80% cuBLAS ≈ 70% 绝对利用率
+- compute-bound 算子（大 GEMM、FA prefill）看此指标；memory-bound 场景（decode、routing）改看 `dram__throughput` 接近带宽 roofline
 
 **范围**：只学 CuTe + CUTLASS 3.x，跳过 CUTLASS 2.x（`gemm/threadblock/`、`gemm/warp/`、`transform/threadblock/` 等）。
 
@@ -14,22 +21,13 @@
 |------|------|------|----------|------|
 | Stage 1 | CuTe 张量代数 | W1–4 | 60h | [stage1_cute_algebra/](stage1_cute_algebra/) |
 | Stage 2 | 硬件原语（SM90 → SM100 增量）| W5–8 | 60h | [stage2_primitives/](stage2_primitives/) |
-| Stage 3 | 手写 GEMM（SM100 主线 → SM120 验证） | W9–13 | 75h | [stage3_gemm/](stage3_gemm/) |
-| Stage 4 | FlashAttention（SM100 主线 → SM120 验证）| W14–18 | 75h | [stage4_flashattn/](stage4_flashattn/) |
+| Stage 3 | 手写 GEMM（SM100）| W9–13 | 75h | [stage3_gemm/](stage3_gemm/) |
+| Stage 4 | FlashAttention（SM100）| W14–18 | 75h | [stage4_flashattn/](stage4_flashattn/) |
 | Stage 5 | Sparse MoE | W19–21 | 45h | [stage5_moe/](stage5_moe/) |
 | Stage 6 | 源码精读 | W22–24 | 45h | [stage6_source_reading/](stage6_source_reading/) |
 | Stage 7 | 极致调优 | 持续 | — | [stage7_tuning/](stage7_tuning/) |
 
-**Stage 内部 SM 串行**：W9 之后 **SM100（B200）为主线，把 SM100 优化做透，再做 SM120（5060 Ti）验证/移植**。Stage 2 一次性消化 SM90 + SM100 硬件原语（SM90 WGMMA 是必要的概念地基）。
-
-**硬件优先级**（每周 README 标题下有详细标记）：
-
-| 标签 | 含义 | 覆盖范围 |
-|------|------|----------|
-| 🟢 **5060 Ti 主战**（你拥有的卡）| 完全在本地跑 | W1-W4 全部；W6/W7（TMA + SM90 风格 cluster）；Stage 3-6 的 SM120 验证/移植（用 SM120 mainloop 跑 sm120 退化路径）；FP4 量化实验 |
-| 🔴 **租 B200 实测**（~$5-15/hr）| 跑 UMMA + TMEM + tcgen05 | W8（UMMA primer）；**Stage 3-6 全部 SM100 主线性能数字**（W10-W24）|
-
-> **关键事实**：5060 Ti (SM120) 不是"残血 SM100"——SM120 是 **SM90 软件栈 + fp4/fp6 块缩放 mma.sync**，**没有 UMMA / TMEM**，但**继承了完整 TMA + cluster + WarpSpec**。详见 [THINKING.md O20](THINKING.md)。
+**硬件**：全计划 **Blackwell-only，目标硬件只有 B200（SM100，租赁 ~$5-15/hr）**。W9 之后所有性能数字都在 B200 上测。Stage 2 已一次性消化 SM90 + SM100 硬件原语（SM90 WGMMA 是 UMMA 的概念地基，文档大量 "differs from WGMMA in X"）。
 
 进度跟踪：[PROGRESS.md](PROGRESS.md)
 
@@ -42,7 +40,7 @@
 ```markdown
 # Week N — <标题>
 
-预计 ~15h ｜ 目标硬件：🟢 5060 Ti（SM120 验证）｜ 🔴 B200（SM100 主线）
+预计 ~15h ｜ 目标硬件：B200（SM100）
 
 ## 目标
 - 能用一句话回答：<核心问题 1>
@@ -57,7 +55,7 @@
 - `exercises/exNN_xxx.cu` — 任务列表（TODO / 验证标准）
 
 ## 跑
-- 编译：`cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=90a ..`
+- 编译：`cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=100a ..`
 - 运行：`./study/stageX/weekNN/exNN_xxx`
 - 期望输出 / 性能基线
 
@@ -129,7 +127,6 @@ study/
 └── stage7_tuning/
     ├── README.md
     ├── profiling_recipes.md
-    ├── h20_baselines.md
     └── b200_baselines.md
 ```
 
@@ -141,8 +138,7 @@ study/
 
 ```bash
 mkdir -p build && cd build
-cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=100a  # B200（SM100 主线）
-# 或：-DCUTLASS_NVCC_ARCHS=120a 用 5060 Ti（SM120 本地验证）
+cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=100a  # B200（SM100）
 
 # 全部
 make study_all -j

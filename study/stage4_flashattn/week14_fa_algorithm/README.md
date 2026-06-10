@@ -1,7 +1,7 @@
 # Week 14 — FA 算法理解
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（CPU 推导 + numpy 参考 + Python DSL 实验，跟具体卡无关）
+> **硬件**：无要求（CPU 推导 + numpy 参考 + Python DSL 实验）
 
 ## 目标
 - 推得动 online softmax 数学（不看公式能写出 m_i / l_i 的更新规则）

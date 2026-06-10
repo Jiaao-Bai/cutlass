@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > ## ⚡ READ FIRST — 用户的当前主线任务
 >
-> **这是一个 fork**。owner 不是在为 CUTLASS 开发新特性，而是在**用这个 fork 学习** CuTe + Hopper(SM90)/Blackwell(SM100) 的内核编程，目标是能手写并极致优化 GEMM / FlashAttention / Sparse MoE。
+> **这是一个 fork**。owner 不是在为 CUTLASS 开发新特性，而是在**用这个 fork 学习** CuTe + Blackwell(SM100) 的内核编程。**总目标：能在 SM100 上写出 tensor core 利用率 ≥70% 的任意 CuTe kernel**（GEMM / FlashAttention / Sparse MoE 是学习路径，不是终点）。**终点产物**：用户后续会新建独立开源仓库，把 `include/cute/` 搬过去，基于 CuTe 写主流 LLM 算子的 tensor core 实现——课程产出的 kernel 都是该仓库的种子代码。
 >
 > **所有学习计划、笔记、练习都在 `study/` 目录下**（与 `include/`、`examples/` 物理隔离，避免 rebase 冲突）。
 >
@@ -22,8 +22,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > ├── CMakeLists.txt                # -DCUTLASS_ENABLE_STUDY=ON 才编译
 > ├── stage1_cute_algebra/          W1-4   CuTe 张量代数
 > ├── stage2_primitives/            W5-8   WGMMA / TMA / Pipeline / TMEM+UMMA
-> ├── stage3_gemm/                  W9-13  手写 GEMM（SM90 → SM100）
-> ├── stage4_flashattn/             W14-18 FlashAttention fwd/bwd（SM90 → SM100）
+> ├── stage3_gemm/                  W9-13  手写 GEMM（SM100，含量化 GEMM）
+> ├── stage4_flashattn/             W14-18 FlashAttention fwd/bwd + GQA/decode（SM100）
 > ├── stage5_moe/                   W19-21 Sparse MoE
 > ├── stage6_source_reading/        W22-24 源码精读（Pipeline/Kernel/EVT）
 > └── stage7_tuning/                持续：profiling + baselines
@@ -34,11 +34,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - **默认假设是学习模式**。开 session 先看 `study/PROGRESS.md` 确认当前周次，再看对应的 `weekNN/README.md`。
 > - **写练习代码**放在 `study/stageX_xxx/weekNN_xxx/exercises/exNN_xxx.cu`，命名沿用现有规范（见 `ex06_hgemm_naive.cu`）。
 > - **不要改上游** `include/` `examples/` `tools/`，除非用户明确要 fix bug 或 contribute。
-> - 用户提交了 ncu 数据 → 帮他记到 `study/stage7_tuning/h20_baselines.md` 或 `b200_baselines.md`。
+> - 用户提交了 ncu 数据 → 帮他记到 `study/stage7_tuning/b200_baselines.md`（TC util% 用 `sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed` 口径）。
 > - 用户问"`include/cutlass/` 里 X 文件怎么读" → 先查 `study/cutlass_reading_strategy.md` 的映射，给出"在第 N 周读"的答复。
 > - 用户答完一周的"自检题" → 帮他在 `study/PROGRESS.md` 打勾。
 > - 周次推进：完成 weekNN 的练习 + 自检，且 stage CHECKPOINT 通过，才进下一周。
-> - 用户的硬件是 5060 Ti（SM120，主战）、H20（SM90，租赁）和 B200（SM100，租赁）；编译命令 `cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=120`（5060 Ti）/ `90a`（H20）/ `100a`（B200）。
+> - 课程 **SM100-only**：目标硬件只有 B200（SM100，租赁）；编译命令 `cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=100a`。不要写 SM120 / SM90 路径的内容。
 
 ---
 

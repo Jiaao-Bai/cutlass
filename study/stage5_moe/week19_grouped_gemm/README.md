@@ -1,7 +1,7 @@
 # Week 19 — Grouped GEMM 基础
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，用 `MainloopSm120ArrayTmaWarpSpecialized` 跑 grouped GEMM 框架，本地验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM array 路径性能）
+> **硬件**：B200（SM100）
 
 ## 目标
 - 看懂 grouped GEMM 与普通 GEMM 的调度差异

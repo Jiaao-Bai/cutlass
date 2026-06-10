@@ -1,7 +1,7 @@
 # Week 3 — TiledMMA / MMA_Atom
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（任何 SM80+ 都行；用 `mma_sm80` atom）
+> **硬件**：任何 SM80+ GPU（用 `mma_sm80` atom）
 
 ## 目标
 - 能解释 `MMA_Atom` 三层包装：PTX → `MMA_Traits` → `MMA_Atom`
@@ -71,11 +71,8 @@ make sgemm_2 -j && ./examples/cute/tutorial/sgemm_2 4096 4096 4096
 
 ## 跑
 ```bash
-# 5060 Ti / SM120
-cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=120 ..
-# H20 / SM90
-cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=90 ..
-# 4090 / SM89 也可：CUTLASS_NVCC_ARCHS=89
+# 任何 SM80+ 卡都能跑（mma_sm80 atom）；B200 用 100a
+cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=100a ..
 
 make study_stage1_w03_ex07_tiled_mma_layout -j && ./study_stage1_w03_ex07_tiled_mma_layout
 make study_stage1_w03_ex08_serpentine_count -j

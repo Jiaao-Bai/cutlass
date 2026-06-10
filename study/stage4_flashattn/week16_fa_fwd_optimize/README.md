@@ -1,8 +1,7 @@
 # Week 16 — FA Forward v2：优化
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，本地跑 sm120 路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05；真 cuBLAS/example 77 对照基线）  
-> 🟢 顺带可在 5060 Ti 试 **FP4/FP6 量化 FA**（`SM120_*_TN<e2m1, e2m1>` atom）
+> **硬件**：B200（SM100）
 
 ## 目标
 - v2 性能 ≥ 80% `examples/77_blackwell_fmha`

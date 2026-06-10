@@ -1,6 +1,6 @@
 # `include/cutlass/` 阅读策略
 
-`cutlass/` 目录共约 67 万行、671 个文件，大部分是 2.x 遗产，对"CuTe + 3.x + Blackwell（SM100/SM120）"的目标没价值。
+`cutlass/` 目录共约 67 万行、671 个文件，大部分是 2.x 遗产，对"CuTe + 3.x + Blackwell（SM100）"的目标没价值。
 本文是精确的取舍清单，**每条都标了对应在学习计划的哪一周用到**，不要一上来就全读。
 
 ---
@@ -11,7 +11,7 @@
 
 ### 三条判别规则（记死这个）
 ```
-① 文件名带 sm90_ / sm100_ / sm120_   →  3.x（看）
+① 文件名带 sm90_ / sm100_   →  3.x（看）
 ② 目录名是 collective/                →  3.x 独有（看）
 ③ 目录名是 threadblock/ / warp/ / thread/  →  2.x 遗产（跳！）
 ```
@@ -41,8 +41,8 @@
 ### 白名单（你实际要看的，就这些）
 ```
 include/cute/                                        ← 第4-5层 + 一切 layout
-include/cutlass/gemm/collective/sm100_* (sm120_*)    ← 第3层 ★W10 范本
-include/cutlass/gemm/kernel/sm100_* (sm120_*)        ← 第2层
+include/cutlass/gemm/collective/sm100_*              ← 第3层 ★W10 范本
+include/cutlass/gemm/kernel/sm100_*                  ← 第2层
 include/cutlass/gemm/device/gemm_universal_adapter.h ← 第1层
 include/cutlass/pipeline/sm100_pipeline.hpp          ← 同步
 include/cutlass/epilogue/collective/sm100_*          ← 尾声(3.x)

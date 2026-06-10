@@ -1,7 +1,7 @@
 # Week 22 — Pipeline + Collective 精读
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，纯读源码 + 写笔记，不需要跑 kernel）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）
+> **硬件**：B200（SM100）
 
 ## 目标
 - 逐行读完 `sm100_pipeline.hpp`（1328 行），理解 phase bit / arrive / wait 的完整状态机 + TMEM consumer 同步

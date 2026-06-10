@@ -6,7 +6,7 @@
  *   2. 用 mbarrier 的 transaction-count 机制等 TMA 完成（不是线程 arrive，是字节到齐）
  *   3. 验证搬进 smem 的内容 == gmem 原始内容（再 smem→gmem 写出对比）
  *
- * 硬件：🟢 5060 Ti(SM120) 原生支持 TMA，本练习完全本地可跑。
+ * 硬件：任意 SM90+ 卡（原生 TMA）。
  *
  * TMA 两段式：
  *   host:   make_tma_copy(SM90_TMA_LOAD{}, gmem_tensor, smem_layout) 产出一个 TmaAtom，
@@ -113,7 +113,7 @@ bool test_box(char const* tag, Shape shape) {
 int main() {
   cudaDeviceProp props;
   cudaGetDeviceProperties(&props, 0);
-  // TMA 需要 SM90+（含 SM100 / SM120）
+  // TMA 需要 SM90+
   if (props.major < 9) {
     printf("Ex13 需要 SM90+（Hopper/Blackwell）。当前 SM%d%d，跳过。\n", props.major, props.minor);
     return 0;

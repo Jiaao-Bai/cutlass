@@ -11,16 +11,15 @@
  *     T2) producer 的 `producer_acquire/commit` 协议
  *     T3) consumer：循环等 mbarrier、单线程 `elect_one` 发 UMMA、`consumer_wait/release`
  *     T4) consumer：epilogue（TMEM 累加器 → gmem）
- *     T5) 把 SM100 / SM120 的 atom 分支补完（B200 主线用 SM100 UMMA；5060 Ti 本地用 SM120 那条）
+ *     T5) 把 SM100 UMMA atom 接好（`SM100_MMA_F16BF16_SS`）
  *
  * 性能不重要，正确性优先。M=N=K=512 通过 CPU 验证就过 W10。
  *
  * 硬件：
- *   🔴 B200(SM100)：主线。用 `SM100_MMA_F16BF16_SS` UMMA atom，累加器在 TMEM，
+ *   B200(SM100)：用 `SM100_MMA_F16BF16_SS` UMMA atom，累加器在 TMEM，
  *      单线程 `elect_one` 发 `tcgen05.mma`
  *      —— 关键代码路径在 include/cutlass/gemm/collective/sm100_mma_warpspecialized.hpp，
  *         dispatch 类 KernelTmaWarpSpecialized1SmSm100 / 2SmSm100
- *   🟢 5060 Ti(SM120)：本地验证。SM120 没有 UMMA/TMEM，走 mma.sync + RMEM 的 dispatch policy
  *
  * 参考：examples/70_blackwell_gemm/70_blackwell_fp16_gemm.cu —— 直接读它的 main loop
  **************************************************************************************************/
@@ -42,7 +41,7 @@ constexpr int BLK_N = 128;
 constexpr int BLK_K = 64;
 constexpr int STAGES = 2;  // 最小 pipeline depth（producer 和 consumer 能错开一拍）
 
-#if defined(CUTLASS_ARCH_MMA_SM100_SUPPORTED) || 1  // 也允许 SM120 编译路径走进
+#if defined(CUTLASS_ARCH_MMA_SM100_SUPPORTED) || 1  // 允许非 SM100 环境先过编译
 
 // --- SharedStorage ----------------------------------------------------------
 // 双 buffer（STAGES 个 tile） + full/empty 两组 mbarrier。和 W7 ping-pong 同构。
@@ -141,8 +140,7 @@ int main(int argc, char** argv) {
   int K = argc > 3 ? atoi(argv[3]) : 512;
 
   cudaDeviceProp props; cudaGetDeviceProperties(&props, 0);
-  // B200(SM100) 主线 UMMA+TMEM；SM120 走 mma.sync 退化路径（本地验证）
-  if (props.major < 10) { printf("v1 主线需要 Blackwell SM100+。当前 SM%d%d（SM120 本地可走退化路径）。\n", props.major, props.minor); return 0; }
+  if (props.major < 10) { printf("v1 需要 Blackwell SM100。当前 SM%d%d。\n", props.major, props.minor); return 0; }
 
   thrust::host_vector<T> hA(M*K), hB(N*K);
   for (int i = 0; i < M*K; ++i) hA[i] = T(float((rand()%5)-2));

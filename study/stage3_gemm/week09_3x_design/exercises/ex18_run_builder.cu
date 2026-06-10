@@ -30,7 +30,7 @@
  *   ./study_stage3_w09_ex18_run_builder
  *
  * 硬件：🔴 B200（SM100）：用 SM100 的 KernelSchedule（1-SM / 2-SM UMMA），跑真 tcgen05.mma
- *      🟢 5060 Ti（SM120）：本地验证，走 SM120 mma.sync 退化 schedule
+ *      （任意 Blackwell 卡可验证编译路径）
  *
  **************************************************************************************************/
 #include <cstdio>

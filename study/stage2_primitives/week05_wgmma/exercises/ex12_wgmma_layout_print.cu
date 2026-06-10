@@ -10,8 +10,8 @@
  *
  * 为什么这是纯 host 程序：
  *   构造 MMA atom + print(tiled_mma) 全是编译期 layout 代数，不发任何 PTX、不碰 GPU。
- *   所以在 5060 Ti / 没有 Hopper 卡 / 甚至 CPU-only 编译都能跑（只要能编译 cute）。
- *   这正是 W5「读 mma_traits」的最佳配套：你能亲眼看到 atom 的接线，而不必跑 H20。
+ *   没有 Hopper 卡 / 甚至 CPU-only 编译都能跑（只要能编译 cute）。
+ *   这正是 W5「读 mma_traits」的最佳配套：你能亲眼看到 atom 的接线，无需 SM90 硬件。
  *
  * 跑：
  *   ./study_stage2_w05_ex12_wgmma_layout_print

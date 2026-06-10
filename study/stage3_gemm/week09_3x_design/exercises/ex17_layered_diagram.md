@@ -31,7 +31,6 @@
 │            + cutlass::epilogue::collective::CollectiveEpilogue（平级另一个）│
 │            = ex17 所说的 "CollectiveOp"（Builder<...>::CollectiveOp 的产物）│
 │    文件:   include/cutlass/gemm/collective/sm100_mma_warpspecialized.hpp │
-│            include/cutlass/gemm/collective/sm120_mma_tma.hpp        │
 │    职责:   load()=TMA producer, mma()=UMMA consumer（TMEM 累加器）, 二者用 pipeline 同步 │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
@@ -50,7 +49,6 @@
 │    单条 PTX 指令的 C++ 包装                                         │
 │    关键类: SM100 UMMA atom（一个 tcgen05.mma 指令的别名）          │
 │    文件:   include/cute/arch/mma_sm100_umma.hpp (tcgen05.mma)       │
-│            include/cute/arch/mma_sm120.hpp (mma.sync, fp4/fp6/fp8)  │
 │            include/cute/arch/copy_sm100_tma.hpp (cp.async.bulk.tensor)│
 │    职责:   inline asm                                               │
 └─────────────────────────────────────────────────────────────────────┘

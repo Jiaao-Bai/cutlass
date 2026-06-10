@@ -1,7 +1,7 @@
 # Week 15 — FA Forward v1（正确性优先）
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，本地跑 sm120 路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）
+> **硬件**：B200（SM100）
 
 ## 目标
 - 自写 FA forward kernel（SM100 UMMA + TMEM），**复用 Stage 3 的 WarpSpec 骨架**

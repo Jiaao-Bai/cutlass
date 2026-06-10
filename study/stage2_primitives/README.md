@@ -2,13 +2,12 @@
 
 预计 4 周（W5–W7 SM90 + W8 SM100 增量），约 60h。
 
-> **硬件**：🟢 5060 Ti 主战（W6/W7 完全本地可跑；W5/W8 读源码 + 静态编译）
-> 🟡 H20（W5 WGMMA 实测，1-2 hr sprint）｜ 🔴 B200（W8 UMMA + TMEM 实测，1-2 hr sprint）
+> **硬件**：B200（SM100，W8 实跑；W5-W7 以读源码 + 静态编译为主）
 
 ## 阶段目标
 
 - 能解释 WGMMA（SM90）和 UMMA（SM100）的核心差异：warpgroup-issue vs single-thread-issue、RMEM accumulator vs TMEM accumulator
-- 能在 host 构造 TMA descriptor，在 kernel 里发起 `cp.async.bulk`（SM90 / SM100 / SM120 共用）
+- 能在 host 构造 TMA descriptor，在 kernel 里发起 `cp.async.bulk`（SM90 / SM100 共用）
 - 能用 `mbarrier` 写 producer / consumer 同步，理解 phase / arrive / wait
 - 能解释 TMEM 分配 / 回收（`tcgen05.alloc / dealloc`），UMMA 单线程发射怎么同步
 - 完成一个 minimal warpspec ping-pong toy（不必完整 GEMM，只验证同步正确）
@@ -19,15 +18,14 @@
 
 | 周 | 标题 | 主战硬件 | 输出 |
 |----|------|---------|------|
-| W5 | [WGMMA](week05_wgmma/) | 🟢 5060 Ti 读 + 🟡 H20 实测 | 跑通 wgmma_sm90.cu + 复刻最小版 |
-| W6 | [TMA](week06_tma/) | 🟢 5060 Ti | 跑通 wgmma_tma_sm90.cu + 自写 TMA G→S 拷贝 |
-| W7 | [Pipeline + Cluster](week07_pipeline_cluster/) | 🟢 5060 Ti | minimal mbarrier ping-pong toy |
-| W8 | [TMEM + UMMA](week08_tmem_umma/) | 🟢 5060 Ti 读 + 🔴 B200 实测 | TMEM alloc + minimal UMMA toy |
+| W5 | [WGMMA](week05_wgmma/) | 读 + 静态编译（UMMA 概念地基）| ex12 layout 代数 + 复刻最小版（不实跑）|
+| W6 | [TMA](week06_tma/) | B200 | 跑通 wgmma_tma_sm90.cu + 自写 TMA G→S 拷贝 |
+| W7 | [Pipeline + Cluster](week07_pipeline_cluster/) | B200 | minimal mbarrier ping-pong toy |
+| W8 | [TMEM + UMMA](week08_tmem_umma/) | B200 实测 | TMEM alloc + minimal UMMA toy |
 
 > **认知地图 = 你自己写的三份 overview**（本 stage 所有 week 都挂回它们的框架：两条定律 分化/进化、三主轴 Scale Up/Async/物理解耦）：
 > - [`sm90_hopper_overview.md`](sm90_hopper_overview.md) — W5-W7 的基线（Hopper 两条主轴）
 > - [`sm100_blackwell_overview.md`](sm100_blackwell_overview.md) — W8 的基线（TMEM/UMMA/2-SM 增量）
-> - [`sm120_fake_blackwell_overview.md`](sm120_fake_blackwell_overview.md) — 解释每个 week 为什么 5060 Ti 能跑/不能跑（通用底座留、大矩阵专用砍）
 >
 > 每个 week README 顶部都有"认知锚点"标注它对应 overview 的哪条主轴/定律 —— 学完一周回 overview 对应条目打勾，操作和认知就接上了。
 

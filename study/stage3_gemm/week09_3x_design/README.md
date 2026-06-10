@@ -1,7 +1,7 @@
 # Week 9 — CUTLASS 3.x 分层设计
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，本地跑 sm120 路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）；本周主要是理解 3.x 分层，跨 SM100/SM120 共通
+> **硬件**：B200（SM100）
 
 ## 目标
 - 能画出 device → kernel → collective → tiled atom → atom 的分层图，每层指向具体文件

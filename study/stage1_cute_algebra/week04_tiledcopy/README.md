@@ -1,7 +1,7 @@
 # Week 4 — TiledCopy / Copy_Atom
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（任何 SM80+ 都行；用 `cp.async` + `mma_sm80`）
+> **硬件**：任何 SM80+ GPU（用 `cp.async` + `mma_sm80`）
 
 ## 目标
 - 能解释 `Copy_Atom` 与 `MMA_Atom` 设计上的对称性
@@ -61,10 +61,8 @@ make sgemm_sm80 -j && ./examples/cute/tutorial/sgemm_sm80 4096 4096 4096
 
 ## 跑
 ```bash
-# 5060 Ti / SM120
-cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=120 ..
-# H20 / SM90
-cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=90 ..
+# 任何 SM80+ 卡都能跑（cp.async + mma_sm80）；B200 用 100a
+cmake -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=100a ..
 
 make study_stage1_w04_ex09_async_copy -j
 make study_stage1_w04_ex10_bank_conflict -j

@@ -1,8 +1,8 @@
 # Stage 5 — Sparse MoE
 
-预计 3 周（W19–W21），约 45h。
+预计 3 周（W19–W21），约 45h。硬件：B200（SM100）。
 
-> **硬件**：🟢 5060 Ti（SM120，本地跑 sm120 路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）
+> 本阶段产出（grouped GEMM + fused MoE）是开源算子库的 MoE 家族。
 
 ## 阶段目标
 
@@ -24,6 +24,7 @@
 - `ex_moe_forward.cu`：8 个 expert，topk=2，hidden=2048，inter=8192，FP16
 - 先跑 router 单测、permute 单测，再 end-to-end
 - 与 PyTorch reference 对比 rtol=1e-2
+- **性能**：grouped GEMM 部分 tensor core 利用率 ≥ 70%（均匀负载下；routing/permute 是 CUDA core 逻辑，看带宽不看 TC）
 
 ### 口答 6 题
 1. Grouped GEMM 跟普通 GEMM 的 tile scheduler 有什么本质区别？

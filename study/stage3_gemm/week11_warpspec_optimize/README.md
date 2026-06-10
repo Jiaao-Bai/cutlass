@@ -1,7 +1,7 @@
 # Week 11 — WarpSpec GEMM v2：优化
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，本地跑 sm120 路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05；真 cuBLAS 对照基线）
+> **硬件**：B200（SM100）
 
 ## 目标
 - 把 v1 的性能提到 **≥ 50% cuBLAS（B200）**

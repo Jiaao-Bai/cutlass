@@ -1,14 +1,14 @@
 # Week 12 — 1-SM UMMA vs 2-SM UMMA
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，本地跑 sm120 路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）
+> **硬件**：B200（SM100）
 
 > **说明**：SM100 没有 SM90 那种 Pingpong / Cooperative 两份独立 kernel 文件。SM100 的 schedule 维度是 **`cta_group::1`（1-SM UMMA）vs `cta_group::2`（2-SM UMMA）**——后者让 cluster 里配对的两个 CTA 协同算同一个 output tile，TMEM 累加器拆在两个 SM 上。本周对照这两个变体（文件夹名保留 `week12_pingpong_vs_coop`，只换内容）。
 
 ## 目标
 - 写出 1-SM UMMA 与 2-SM UMMA 两个变体，理解 cta_group 1 / 2 的骨架差异
 - 在 B200 上做 benchmark，找出各自的最优工作负载（TMEM 用量 / cluster / 吞吐对比）
-- 完成 Stage 3 CHECKPOINT：v3 ≥ 70% cuBLAS（B200）
+- 完成 Stage 3 CHECKPOINT：v3 ≥ 80% cuBLAS（B200，≈ 70% tensor core 利用率）
 
 ## 读
 
@@ -58,4 +58,4 @@ bash study/stage3_gemm/week12_pingpong_vs_coop/exercises/bench.sh
 2. 2-SM UMMA 由哪个 CTA 发射 `tcgen05.mma`？另一个 CTA 在做什么？
 3. 在 M=128 的 decode 场景为什么 2-SM UMMA 不一定划算？
 4. 1-SM UMMA 的单 tile TMEM 用量比 2-SM 高还是低？为什么 2-SM 能开更大的 N tile？
-5. 你的 v3 在 6 个 shape 中哪几个超过 70% cuBLAS（B200）？哪几个不达标？瓶颈分别是 UMMA 吞吐、TMEM 容量还是 TMA？
+5. 你的 v3 在 6 个 shape 中哪几个超过 80% cuBLAS（B200）？哪几个不达标？瓶颈分别是 UMMA 吞吐、TMEM 容量还是 TMA？

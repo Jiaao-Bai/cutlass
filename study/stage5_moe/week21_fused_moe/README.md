@@ -1,7 +1,7 @@
 # Week 21 — Fused MoE
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（SM120，用 SM120 array TMA + WarpSpec 跑 fused MoE 框架，本地验证；FP4 量化 expert 也能在本地试）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05 production 性能数字）
+> **硬件**：B200（SM100）
 
 ## 目标
 - 完成 Stage 5 CHECKPOINT：end-to-end MoE forward

@@ -26,6 +26,6 @@ size(tiled_mma) = 128
 5. RS 吃寄存器压 occupancy，A 复用多时值得；否则 SS 省寄存器 → 见 THINKING O25
 
 ## 待办（需硬件）
-- [ ] ex11 单 tile WGMMA 实跑（要 H20）
+- ~~ex11 单 tile WGMMA 实跑~~（已取消：课程 SM100-only，不租 SM90 硬件）
 - [ ] ex12 跑 N=256，验证 C value 维随 N 线性增长（N=8→4 个；N=256→?）
-- [ ] 5060 Ti 静态验证：`nvcc -arch=sm_90a -ptx` 有 wgmma.mma_async / sm_120a 无
+- [ ] 静态验证：`nvcc -arch=sm_90a -ptx` 能编出 wgmma.mma_async

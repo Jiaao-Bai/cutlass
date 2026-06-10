@@ -1,57 +1,76 @@
-# Week 10 — 手写 WarpSpec GEMM v1
+# Week 10 — 手写 WarpSpec GEMM v1（SM100 UMMA + TMEM）
 
 预计 ~15h
-> **硬件**：🟢 5060 Ti（用 `MainloopSm120TmaWarpSpecialized` 在本地跑完整 TMA + WarpSpec + Cluster 框架）｜ 🟡 H20（替换 atom 为 WGMMA 后实测真 WGMMA 性能数字）  
-> **关键**：5060 Ti 上你**真能跑** WarpSpec mainloop 的所有架构特性，只是 MMA atom 换成 mma.sync（SM120）而非 WGMMA
+> **硬件**：🟢 5060 Ti（SM120，本地跑退化路径验证）｜ 🔴 B200（SM100，实测 UMMA+TMEM+tcgen05）
 
 ## 目标
-- 自己组装 WarpSpec GEMM kernel，**不用** `CollectiveBuilder`
-- 跑出正确结果（跟 CPU ref 对齐）
-- 性能不重要，正确性优先
+- 不用 `CollectiveBuilder`，自己组装一个 WarpSpec GEMM kernel
+- 跟 CPU ref 对齐，**正确性优先，性能不管**
 
-## 读（**由浅入深**：参考实现 → kernel 骨架 → mainloop → SM120 落地点）
-1. `include/cutlass/pipeline/sm90_pipeline.hpp` — pipeline state 流转（W7 已读，**先复习**：producer_acquire/commit、consumer_wait/release 四步协议是本周代码的骨架）
-2. `examples/48_hopper_warp_specialized_gemm/48_hopper_warp_specialized_gemm.cu` — **参照实现**，先把它跑起来当 baseline，再写自己的 v1
-3. `include/cutlass/gemm/kernel/sm90_gemm_tma_warpspecialized.hpp`（522 行）— 基础 WarpSpec 完整骨架（必读）：看 `operator()` 怎么按 warp_idx 分到 producer / consumer 分支
-4. `include/cutlass/gemm/collective/sm90_mma_tma_gmma_ss_warpspecialized.hpp`（584 行）— `load()` / `mma()` 分离 mainloop（最深，是 producer 和 consumer 的两段逻辑本体）
-5. **🟢 5060 Ti 落地点（关键）**：`include/cutlass/gemm/collective/sm120_mma_tma.hpp` —— SM120 用的 mainloop 在这里，类名 `MainloopSm120TmaWarpSpecialized`（第 75 行）。配合 `include/cutlass/gemm/dispatch_policy.hpp:585+` 的 `KernelTmaWarpSpecialized{Cooperative,Pingpong}Sm120` 系列 dispatch policy。这是为什么本周代码能在 5060 Ti 上跑完整 WarpSpec 框架的**真实文件依据**。
+## 写
 
-## WarpSpec 模式
+`exercises/ex_warpspec_gemm_v1.cu` — 一个扁平的 SM100 GEMM：
+- TileShape `<128,128,64>`、ClusterShape `<1,1,1>`（1-SM）
+- pipeline depth = 2
+- epilogue：从 TMEM 读累加器直接写回 GMEM（不带 alpha/beta/C）
+- CPU ref 检查（M=N=K=512）
 
+### 8 步骨架
+```
+host：
+  1. 定义类型：TiledMma(UMMA atom) / smem swizzle layout / make_tma_copy(A,B)
+  2. launch kernel<<<grid, 线程数, smem>>>（cluster 1×1×1）
+
+device kernel()：
+  3. tcgen05.alloc 申请 TMEM 累加器段
+  4. warp 分工：1 producer warp + 1 MMA warp + 几个 epilogue warp
+  5. producer：k_tile 循环 { producer_acquire → 发 TMA 搬 A/B → 字节到齐自动 commit }
+  6. MMA：    k_tile 循环 { consumer_wait → elect_one 发 tcgen05.mma 累加进 TMEM → consumer_release }
+  7. epilogue：tcgen05.ld 把 TMEM→RMEM → 写回 GMEM
+  8. tcgen05.dealloc 释放 TMEM
+```
+
+### 零件速查（忘了回对应周）
+| 零件 | 周 |
+|------|----|
+| `make_tiled_mma(UMMA atom)` | W3 / `mma_sm100_umma.hpp` |
+| `Layout_K_SW128_Atom` swizzle | W2/W5（O3） |
+| `make_tma_copy`（host 建 descriptor） | W6（O29） |
+| `tcgen05.alloc` / TMEM 累加器 | W8（O31） |
+| pipeline 四步协议 | W7（O30） |
+| warp 分工 + load/mma 循环结构 | W9（抄 `sm100_gemm/mma_warpspecialized.hpp`） |
+
+## WarpSpec 模式（v1）
 ```
 ┌─────────────────────────────────────┐
-│  CTA                                │
 │  ┌──────────┐   ┌────────────────┐  │
-│  │ TMA warp │   │  MMA warpgroup │  │
-│  │(producer)│──▶│   (consumer)   │  │
-│  └──────────┘   └────────────────┘  │
-│       mbarrier 同步                 │
+│  │ TMA warp │──▶│  MMA warp       │  │
+│  │(producer)│   │ (elect_one →    │  │
+│  └──────────┘   │  tcgen05.mma)   │  │
+│      mbarrier   └────────────────┘  │
+│                    累加器在 TMEM     │
+│                 ┌────────────────┐  │
+│                 │ epilogue warps  │  │
+│                 │ TMEM→RMEM→GMEM   │  │
+│                 └────────────────┘  │
 └─────────────────────────────────────┘
 ```
 
-## 写
-- `exercises/ex_warpspec_gemm_v1.cu` — v1 版本：
-  - TileShape `<128,128,64>`、ClusterShape `<1,1,1>`
-  - pipeline depth = 2（最小可工作）
-  - 简单 epilogue：寄存器直接写回 GMEM（不带 alpha/beta）
-  - 通过 CPU ref 检查（M=N=K=512）
-
-需要自己实现的关键细节：
-- smem 的 swizzle layout（先用 `Layout_K_SW128_Atom`，能跑就行）
-- producer warp：循环发起 TMA，`producer_acquire/commit`
-- consumer warpgroup：`consumer_wait`、发 WGMMA、`consumer_release`
-- 累加器在 register 里，最终写回 GMEM
-
 ## 跑
 ```bash
+# B200(SM100)
+cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=100a
 make study_stage3_w10_ex_warpspec_gemm_v1 -j
-./study_stage3_w10_ex_warpspec_gemm_v1 512 512 512   # 期望 PASSED
+./study_stage3_w10_ex_warpspec_gemm_v1 512 512 512    # 期望 PASSED
 ./study_stage3_w10_ex_warpspec_gemm_v1 4096 4096 4096
+
+# 5060 Ti(SM120，退化路径：mma.sync + RMEM)
+cmake .. -DCUTLASS_ENABLE_STUDY=ON -DCUTLASS_NVCC_ARCHS=120a
 ```
 
 ## 自检
-1. 你的 producer warp 用了多少线程？为什么？
-2. consumer warpgroup 一共多少线程？跟 WGMMA 的 128 线程怎么对应？
-3. pipeline depth = 2 时，TMA 和 WGMMA 能重叠吗？什么时候重叠不上？
-4. `consumer_wait` 之后才能发 WGMMA，但 WGMMA 是异步的——`consumer_release` 应该放在 `wgmma.commit_group` 之后还是 `wgmma.wait_group<0>` 之后？为什么？
-5. 你的 v1 vs example 48 性能差多少？主要差距在哪？
+1. producer warp 用了多少线程？真正发 TMA 的是几个？
+2. UMMA 由几个线程发射？累加器在 TMEM 让 MMA warp 比 SM90 的 consumer warpgroup 省了什么？
+3. pipeline depth = 2 能让 TMA 和 UMMA 重叠吗？depth=1 会怎样？
+4. `consumer_release` 该在什么同步点之后发？epilogue 读 TMEM 前怎么确认 UMMA 写完了？
+5. `make_tma_copy` 传了哪些参数？它替你算好了什么（对照 W6）？

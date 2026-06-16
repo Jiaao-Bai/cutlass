@@ -537,6 +537,14 @@ atom        MMA_Atom/Copy_Atom     单条 PTX(W5/W6)
 - **两种 descriptor 区分**:UMMA smem desc = 8B,设备端算,寄存器,直接当 `tcgen05.mma` 操作数;TMA desc = 128B(`CUtensorMap`),host 端算,常量内存(故需 `__grid_constant__` 让它可取地址给 TMA 单元读)。
 - `ALayout` 只是逻辑映射(线程→规范元素编号),**不是物理 offset**:它跟 `a_major` 无关(K/MN 都一样 stride),物理 major 在 smem tensor(`tile_to_mma_shape`+swizzle 原子)+ descriptor 的 a_major flag 里。检验法:stride 随 major/swizzle 变 = 物理布局;不变 = 逻辑映射。
 - `partition_shape_A`(`mma_atom.hpp:590`)= 拿 dummy layout 空跑 `thrfrg_A` + 取 Int<0> 切片 + 只 return shape,与真 `partition_A` 同源(`thrfrg_A`),保证"建 smem 布局的形状"和"读数的形状"一致;口算只能给尺寸,给不了嵌套结构 + 一致性。
+  - **`thrfrg_A` 输出固定 4 段对称结构**:`((ThrV,(ThrM,ThrK)), (FrgV,(RestM,RestK)))`。前半=谁来算,后半=算哪些;每半再分"atom 内"+"跨 atom"两层。
+  - **★ 两种扩展的精确归属(钉死)**:
+    - `ThrV` / `FrgV` = **atom 内部**(atom 自己的 ThrID / 元素)。
+    - **`(ThrM,ThrK)` = TiledMMA 级的空间扩展,由 `AtomLayoutMNK` 决定**(铺几个 atom 并行,加线程/CTA)。
+    - **`(RestM,RestK)` = "整个 TiledMMA 要重复算多少次"的时间扩展,由 mma_tiler(要算的整个 tile 大小)÷ TiledMMA 覆盖大小 决定**(同批线程循环,`for k_block`)。
+    - 关系:某方向"跨 atom 总块数"= `ThrM/K`(并行)× `Rest M/K`(循环)。05 全 `AtomLayoutMNK=<1,1,1>` → `(ThrM,ThrK)=(1,1)`(值1但 mode 保留,为结构一致 + 与 `(RestM,RestK)` 位置对应);K 方向总块4 = ThrK(1) × RestK(4)。
+  - 第3行切片 `dummy_tv(Int<0>{}, make_coord(_, repeat<rank(dummy)>(_)))`:`Int<0>` 锁定"谁来算"取 0 号执行单元(消 mode0);`repeat<rank>(_)`=`(_,_)` 用**多个独立下划线**逐个寻址 `(RestM,RestK)`,把嵌套对**拍平**成独立 mode(`((128,16),(1,4))`→`((128,16),1,4)`);单个 `_` 则保持嵌套。拍平发生在切片,不是 `shape()`。
+  - 2-SM(05)trace:`partition_shape_A(tiled_mma,(256,64))` → ÷atom(256,16)得块(1,4) → compose 2-SM ALayout `(2,(128,16))` 把 atom-M 劈给 2 CTA → 取 CTA0 → `((128,16),1,4)`。**256→128 减半 = 2-SM 把 M 分给 2 peer CTA**;B 沿 N 不劈,保持 256。
 - print 符号:`o`=∘(composition,分隔 engine 和 layout)、`:`分隔 shape/stride、`_N`=编译期常量 vs `N`=运行时、`[16b]/[32b]`=元素位宽(bit,非对齐;A/B fp16、C/D fp32 累加)。
 - `cute::ArrayEngine<T,N>` = 自带存储的 owning engine(内联定长数组,处理对齐+subbyte 打包),对比 `gmem_ptr/smem_ptr` 是 view engine(只持指针)。SharedStorage 用它"占住 smem 物理空间"。
 - tutorial 性能定位:**01-05 全是教学单 buffer 无流水,~30% cuBLAS**;examples/70+ 用 collective/builder(高级接口,不算纯 CuTe)~90%;**纯 CuTe 例子只有 `examples/cute/`(blackwell 01-05 + hopper wgmma 2个 + sgemm 几个),要看纯 CuTe 高性能得读 collective 源码(Stage 6)**。

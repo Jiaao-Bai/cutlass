@@ -545,6 +545,7 @@ atom        MMA_Atom/Copy_Atom     单条 PTX(W5/W6)
     - 关系:某方向"跨 atom 总块数"= `ThrM/K`(并行)× `Rest M/K`(循环)。05 全 `AtomLayoutMNK=<1,1,1>` → `(ThrM,ThrK)=(1,1)`(值1但 mode 保留,为结构一致 + 与 `(RestM,RestK)` 位置对应);K 方向总块4 = ThrK(1) × RestK(4)。
   - 第3行切片 `dummy_tv(Int<0>{}, make_coord(_, repeat<rank(dummy)>(_)))`:`Int<0>` 锁定"谁来算"取 0 号执行单元(消 mode0);`repeat<rank>(_)`=`(_,_)` 用**多个独立下划线**逐个寻址 `(RestM,RestK)`,把嵌套对**拍平**成独立 mode(`((128,16),(1,4))`→`((128,16),1,4)`);单个 `_` 则保持嵌套。拍平发生在切片,不是 `shape()`。
   - 2-SM(05)trace:`partition_shape_A(tiled_mma,(256,64))` → ÷atom(256,16)得块(1,4) → compose 2-SM ALayout `(2,(128,16))` 把 atom-M 劈给 2 CTA → 取 CTA0 → `((128,16),1,4)`。**256→128 减半 = 2-SM 把 M 分给 2 peer CTA**;B 沿 N 不劈,保持 256。
+  - **★ partition_shape_A 的语义(一句话)= 一个执行单元独自负责的 A 数据形状,分层表达为"单次 × 重复"**:`((128,16),1,4)` 中 `(128,16)`=单条指令量(atom 内 FrgV),`1,4`=自己循环次数(RestM/RestK),总量 128×64。执行单元 = CTA(2-SM,取 Int<0>=CTA0)或 thread(WGMMA)。**已扣掉分给别的执行单元并行的部分(ThrM/ThrK)**,只剩"自己那份 + 自己循环"。所以它正好 = 该 CTA 要在 smem 里准备的 A 大小(smem 每 CTA 各一份,只放自己份额,不放整个 256)→ 直接喂 `tile_to_mma_shape` 建 smem 布局。
 - print 符号:`o`=∘(composition,分隔 engine 和 layout)、`:`分隔 shape/stride、`_N`=编译期常量 vs `N`=运行时、`[16b]/[32b]`=元素位宽(bit,非对齐;A/B fp16、C/D fp32 累加)。
 - `cute::ArrayEngine<T,N>` = 自带存储的 owning engine(内联定长数组,处理对齐+subbyte 打包),对比 `gmem_ptr/smem_ptr` 是 view engine(只持指针)。SharedStorage 用它"占住 smem 物理空间"。
 - tutorial 性能定位:**01-05 全是教学单 buffer 无流水,~30% cuBLAS**;examples/70+ 用 collective/builder(高级接口,不算纯 CuTe)~90%;**纯 CuTe 例子只有 `examples/cute/`(blackwell 01-05 + hopper wgmma 2个 + sgemm 几个),要看纯 CuTe 高性能得读 collective 源码(Stage 6)**。

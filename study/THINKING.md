@@ -510,6 +510,38 @@ atom        MMA_Atom/Copy_Atom     单条 PTX(W5/W6)
 - **三重未来诘问(真问题)**：① 动态 shape(GPU thread block 灵活切,NPU 固定尺度→padding/回调 host) ② 动态 if-else(MoE 路由/剪枝,GPU 标量分支便宜,NPU 深流水 flush) ③ 动态 tile size + SRAM 内 Shuffle/Permute(= swizzle 动态版,NPU 固定 layout 追不上)。
 - 读法:技术骨架(FA 贴架构 / WS 是命门 / 三诘问)成立;内幕八卦(昇腾 1GB L2 / V-Cache)无法证实;"软件栈纯被动承接"是暴论。**印证你 B200 库方向的价值:壁垒在 warp 灵活性 + SRAM layout 控制,正是你 Stage2-4 啃的。**
 
+### O41. TiledMMA / MMA_Atom / ThrLayoutVMNK 的精确分层(读 tutorial 01-05 时彻底打通)
+
+(来自精读 `examples/cute/tutorial/blackwell/01-05` + `include/cute/atom/mma_atom.hpp` 的一长串追问)
+
+**四层抽象链(从硬件爬到调度,继承关系 `mma_atom.hpp:45/49/211`)**
+- `MMAOperation`(如 `SM100_MMA_F16BF16_SS`)= 一条 PTX 指令薄封装(`arch/mma_sm100_umma.hpp`),只有 `fma()`+寄存器声明,不懂 layout。M/N 是模板参数(选硬件指令变体,`static_assert` 卡范围 M∈{64,128}/N≤256);**K 不是参数**,由 `K=256bit/sizeof_bits<T>` 算死(F16→16),写在 `mma_traits_sm100.hpp:1043`。
+- `MMA_Traits<Op>` = 给指令贴 TV layout 的**外部特化**(traits 是 C++ 惯用法,不改原类型)。提供 `Shape_MNK`/`ALayout`/`BLayout`/`CLayout`/`ThrID`。M 经 `Int<M>` 流进 ALayout,M=128 vs 256 = 不同具体类型(同模板)。
+- `MMA_Atom<Op>` = 指令+traits 合体的可用积木(会 `make_fragment`/发指令)。
+- `TiledMMA` = atom + `AtomLayoutMNK` 铺开 + 线程分工。目录叫 `atom/` 不叫 `traits/` 因为目录按"产出的抽象(atom)"命名,traits 只是手段。
+
+**★ TiledMMA 的精确语义(被反复绕晕后钉死)**
+- **TiledMMA 描述"多个 atom 空间铺开、各执行一次(并行)",不是"一组 atom 时间上重复多次"。**
+- `AtomLayoutMNK` = 空间并行倍数,**加线程/CTA**。WGMMA `<2,1,1>` = 2 个 atom 并排 = 256 线程 = 2 warpgroup 各跑一次(非一个 atom 跑两遍)。
+- 时间循环(同批线程重复发)= mma_tiler > TiledMMA 产生的 RestM/N/K,由 `cute::gemm` / 手写 `for k_block` 负责,**不在 TiledMMA 里**。
+- 记忆:**TiledMMA = 这一拍多少 mma 同时开火;for 循环 = 开几拍。**
+
+**★ ThrLayoutVMNK 的本质(用户自己悟出的点)**
+- `ThrLayoutVMNK = tiled_product(AtomThrID, AtomLayoutMNK)`(`mma_atom.hpp:225`),rank-4 `(V,M,N,K)`。
+- **主要用途是"反着映射":`get_slice` 里 `get_flat_coord(idx)` 把全局编号拆成 `(v,m,n,k)` = "全局第几个执行单元 → 它是第几个 atom 内的第几号"。** 必须是 layout 不能是 shape——因为 stride 编码了这个换算规则(V-stride=1、M-stride=128 决定 165→(37,1));shape 只说"有多少",stride 说"怎么排"。
+- `idx` 范围 = `size(ThrLayoutVMNK)` = **所有 mode 之积**,不是只看 size<0>(V)。只有 M=N=K=1(如 05)时才恰好 = V,易误判。
+- **V 的含义随 AtomThrID 变**:WGMMA `AtomThrID=128` → V=线程;**UMMA `AtomThrID=1/2` → V=CTA(peer CTA)**。所以 SM100 `get_slice(mma_v)` 喂的是 peer-CTA 坐标(`blockIdx.x % size<0>`)不是 threadIdx —— 这就是"SM90 线程级分工 vs SM100 CTA 级分工"(注释 01:160 行)的代码落点。
+
+**配套小知识点(同一轮问出来的)**
+- `make_fragment_A` 两分支(`mma_atom.hpp:154`):FrgType 有 dereference(SM100 `smem_desc`)→ 走分支1造**descriptor 视图**(0 寄存器,`tCrA` 不装数据);值类型(Ampere)→ `make_fragment_like` 真分配寄存器。`tCsA`=真 smem 数据,`tCrA`=它的 descriptor 视图(被描述/描述关系)。
+- **两种 descriptor 区分**:UMMA smem desc = 8B,设备端算,寄存器,直接当 `tcgen05.mma` 操作数;TMA desc = 128B(`CUtensorMap`),host 端算,常量内存(故需 `__grid_constant__` 让它可取地址给 TMA 单元读)。
+- `ALayout` 只是逻辑映射(线程→规范元素编号),**不是物理 offset**:它跟 `a_major` 无关(K/MN 都一样 stride),物理 major 在 smem tensor(`tile_to_mma_shape`+swizzle 原子)+ descriptor 的 a_major flag 里。检验法:stride 随 major/swizzle 变 = 物理布局;不变 = 逻辑映射。
+- `partition_shape_A`(`mma_atom.hpp:590`)= 拿 dummy layout 空跑 `thrfrg_A` + 取 Int<0> 切片 + 只 return shape,与真 `partition_A` 同源(`thrfrg_A`),保证"建 smem 布局的形状"和"读数的形状"一致;口算只能给尺寸,给不了嵌套结构 + 一致性。
+- print 符号:`o`=∘(composition,分隔 engine 和 layout)、`:`分隔 shape/stride、`_N`=编译期常量 vs `N`=运行时、`[16b]/[32b]`=元素位宽(bit,非对齐;A/B fp16、C/D fp32 累加)。
+- `cute::ArrayEngine<T,N>` = 自带存储的 owning engine(内联定长数组,处理对齐+subbyte 打包),对比 `gmem_ptr/smem_ptr` 是 view engine(只持指针)。SharedStorage 用它"占住 smem 物理空间"。
+- tutorial 性能定位:**01-05 全是教学单 buffer 无流水,~30% cuBLAS**;examples/70+ 用 collective/builder(高级接口,不算纯 CuTe)~90%;**纯 CuTe 例子只有 `examples/cute/`(blackwell 01-05 + hopper wgmma 2个 + sgemm 几个),要看纯 CuTe 高性能得读 collective 源码(Stage 6)**。
+- 01→02 加 TMA+mbarrier(仍单 buffer);02→03 加 cluster+multicast;03→04 加 2-SM;04→05 加 TMA epilogue。02 的 mainloop(TMA load+transaction barrier+wait)≈ 你 W10 producer 直接模板。
+
 ---
 
 ## 三、方法论

@@ -550,6 +550,8 @@ atom        MMA_Atom/Copy_Atom     单条 PTX(W5/W6)
 - `cute::ArrayEngine<T,N>` = 自带存储的 owning engine(内联定长数组,处理对齐+subbyte 打包),对比 `gmem_ptr/smem_ptr` 是 view engine(只持指针)。SharedStorage 用它"占住 smem 物理空间"。
 - tutorial 性能定位:**01-05 全是教学单 buffer 无流水,~30% cuBLAS**;examples/70+ 用 collective/builder(高级接口,不算纯 CuTe)~90%;**纯 CuTe 例子只有 `examples/cute/`(blackwell 01-05 + hopper wgmma 2个 + sgemm 几个),要看纯 CuTe 高性能得读 collective 源码(Stage 6)**。
 - 01→02 加 TMA+mbarrier(仍单 buffer);02→03 加 cluster+multicast;03→04 加 2-SM;04→05 加 TMA epilogue。02 的 mainloop(TMA load+transaction barrier+wait)≈ 你 W10 producer 直接模板。
+- **★ swizzle 实测收尾(用 `probe_shapes_sm100.cu` 在 5060Ti 跑出真值,锁死悬案)**:`Layout_K_SW128_Atom<half>` 实测 = **`Sw<3,4,3>` 作用在元素偏移**(不是 upcast 后的 `<3,0,3>`——我曾据 `upcast<sizeof_bits>` 推断 M 会 4→0,**错了**;带 `smem_ptr_flag` 的 ComposedLayout 做 upcast 只缩放内层 stride,不改 swizzle M)。公式 `apply(x)=x^((x&(0b111<<7))>>3)` = bit[7:9] XOR 进 bit[4:6]。实测 m=0..7 @k=0 → 0/64/144/208/288/352/432/496(异或量 0/0/16/16/32/32/48/48),逐行打散避 bank conflict。**方法论再次坐实:layout/swizzle 跑 print 胜过脑内推导,我两次手算不如一次实测。**
+- **shape/layout 全是 host 编译期代数**:`make_tiled_mma`/`partition_shape_A`/`tile_to_mma_shape`/`print` 都 `__host__` constexpr,5060Ti 甚至无 GPU 机器都能跑(atom 的 `fma()` 才需 SM100,不调用不触发)。05 的 `print(tiled_mma/mma_shape_A/sA_layout)` 在 host 函数(launch 前)→ CPU 打印;`if(thread0())` 的 print 在 kernel 内才需 GPU。探针:`study/stage3_gemm/week10_warpspec_writeup/exercises/probe_shapes_sm100.cu`。
 
 ---
 

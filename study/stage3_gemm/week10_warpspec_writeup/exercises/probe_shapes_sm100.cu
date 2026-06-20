@@ -62,6 +62,22 @@ int main() {
     }
   }
 
+  // —— bank 视角：bank = (offset_elem * sizeof(half) / 4) % 32 = (off/2)%32 ——
+  // 扫整行（k=0..15 是 atom 内 K；这里只有 16 列 half，看 8 行 × 16 列的 bank 分布）
+  print("\n==== bank 分布 (row m=0..7, col k=0..15) ====\n");
+  printf("      ");
+  for (int k = 0; k < 16; ++k) printf("%3d", k);
+  printf("   <- k\n");
+  for (int m = 0; m < 8; ++m) {
+    printf("m=%d:  ", m);
+    for (int k = 0; k < 16; ++k) {
+      auto off = sA_layout(make_coord(make_coord(m, k), 0, 0));
+      int bank = (int(off) * int(sizeof(TypeA)) / 4) % 32;
+      printf("%3d", bank);
+    }
+    printf("\n");
+  }
+
   // 也单独看 swizzle 原子本身的真实参数
   print("\nLayout_K_SW128_Atom<half>:\t");
   print(UMMA::Layout_K_SW128_Atom<TypeA>{}); print("\n");

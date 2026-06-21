@@ -553,6 +553,25 @@ atom        MMA_Atom/Copy_Atom     单条 PTX(W5/W6)
 - **★ swizzle 实测收尾(用 `probe_shapes_sm100.cu` 在 5060Ti 跑出真值,锁死悬案)**:`Layout_K_SW128_Atom<half>` 实测 = **`Sw<3,4,3>` 作用在元素偏移**(不是 upcast 后的 `<3,0,3>`——我曾据 `upcast<sizeof_bits>` 推断 M 会 4→0,**错了**;带 `smem_ptr_flag` 的 ComposedLayout 做 upcast 只缩放内层 stride,不改 swizzle M)。公式 `apply(x)=x^((x&(0b111<<7))>>3)` = bit[7:9] XOR 进 bit[4:6]。实测 m=0..7 @k=0 → 0/64/144/208/288/352/432/496(异或量 0/0/16/16/32/32/48/48),逐行打散避 bank conflict。**方法论再次坐实:layout/swizzle 跑 print 胜过脑内推导,我两次手算不如一次实测。**
 - **shape/layout 全是 host 编译期代数**:`make_tiled_mma`/`partition_shape_A`/`tile_to_mma_shape`/`print` 都 `__host__` constexpr,5060Ti 甚至无 GPU 机器都能跑(atom 的 `fma()` 才需 SM100,不调用不触发)。05 的 `print(tiled_mma/mma_shape_A/sA_layout)` 在 host 函数(launch 前)→ CPU 打印;`if(thread0())` 的 print 在 kernel 内才需 GPU。探针:`study/stage3_gemm/week10_warpspec_writeup/exercises/probe_shapes_sm100.cu`。
 
+- **★★ Swizzle 设计完整理解(用户自己推出 + `probe_swizzle_banks.cu` 实测,这块彻底闭环)**
+
+  **(a) `Sw<B,M,S>` 的几何意义(用户总结,源码 `swizzle.hpp:42-53` 印证)**:它是一个 **2^B 行 × 2^S 列的 cell 网格**,每个 cell 装 `2^M` 个元素。`Sw<3,4,3>` = 8 行 × 8 列、cell=16 元素、自然画布 = 8×8×16 = **1024 元素**(= bit 版 layout `(8,1024)` 的 1024 由来)。swizzle 操作 = **行内按 cell 做 XOR 重排:列号 ^= 行号**。bit 归属:`offset = 高位...行(source,bits[M+S, M+S+B))...列(target,bits[M,M+B))...cell内(bits[0,M))`。对 `Sw<3,4,3>`:cell内=bit0-3,列=bit4,5,6,行=bit7,8,9。
+
+  **(b) `Layout`(ComposedLayout 的 B)的作用**:① 定 atom 物理 extent ② 坐标→offset 映射(简单 row-major atom 时映射平凡)。`Layout_K_SW128_Atom_Bits` 的 `(8,1024)bit` = **8 行 × 128 字节**(1024bit=128B=SW128 宽度),用 bit 写是 dtype 无关,`upcast<16>`→half `(8,64)`,`upcast<32>`→float `(8,32)`。这里的 "Atom" = **Layout atom(最小重复布局瓦片)**,不是 MMA atom;`tile_to_shape` 拿它平铺铺满大 smem(贴瓷砖)。
+
+  **(c) ★ 用户的关键判据:atom 元素数的最高有效位决定 swizzle 强度**。atom 总元素数决定 offset 用几位;若行维度(source bits)的高位恒为 0,则行数减半。
+    - half: 8×64=512=`0b1_1111_1111`(9位,**bit9=0**)。bit9 是行 source(7,8,9)最高位 → 行 8→**4**。画布实际 = **4 行 × 8 列**(行减半,非列减半)。→ **4 组行模式**(只 bit7,8 活跃)。
+    - float: 8×32=256=`0b1111_1111`(8位,**bit8,9=0**)。行 source 只剩 bit7 → **2 行** → **2 组行模式**。float 更弱因 atom 更小,高位 source 用不上。
+    - 行配对(half row0=row1 / float row0-3 同):因 i 的最低位 i₀(bit6)落在"列"维度不在"行",不产生新行模式。
+
+  **(d) `probe_swizzle_banks.cu` 实测(B200 无关,5060Ti host 跑)**:两个 dtype 都是 `Sw<3,4,3>`(upcast 不改 swizzle,只缩 stride);都 128 字节宽。
+    - half `Sw<3,4,3> o (8,64):(64,1)`,bank=(off/2)%32,2 half/bank:每行铺满 32 bank;4 个 chunk(各16 half=8 bank=1 octant)按 `octant_out = chunk ^ (row>>1)` 重排,row组∈{0,1,2,3};实测 row0,1=[0-7,8-15,16-23,24-31],row2,3=octant XOR1,row4,5 XOR2,row6,7 XOR3。
+    - float `Sw<3,4,3> o (8,32):(32,1)`,bank=off%32,1 float/bank:`bank = col ^ ((row>=4)?16:0)`;row0-3 顺序 0-31,row4-7 = col^16。
+    - **无 swizzle 对照**:`bank=col`,8 行全同 → 同列 8 行全撞 → 8-way conflict。swizzle 把行分组错开消冲突。
+  探针:`study/stage3_gemm/week10_warpspec_writeup/exercises/probe_swizzle_banks.cu`。
+
+  **(e) 我(agent)的两次错 + 教训**:① 误推 upcast 把 `Sw<3,4,3>`→`<3,0,3>`(实测两 dtype 都保持 `<3,4,3>`);② 误说"8×4 列减半"(实为 4×8 行减半,我混了 layout 网格 8行×4cell 和 swizzle 画布 4行×8列 —— 因 i₀=bit6 落在列维)。**用户的 bit 级推导全对,实测为准。swizzle/layout 一律先跑 probe。**
+
 ---
 
 ## 三、方法论

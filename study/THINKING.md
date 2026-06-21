@@ -559,6 +559,8 @@ atom        MMA_Atom/Copy_Atom     单条 PTX(W5/W6)
 
   **(b) `Layout`(ComposedLayout 的 B)的作用**:① 定 atom 物理 extent ② 坐标→offset 映射(简单 row-major atom 时映射平凡)。`Layout_K_SW128_Atom_Bits` 的 `(8,1024)bit` = **8 行 × 128 字节**(1024bit=128B=SW128 宽度),用 bit 写是 dtype 无关,`upcast<16>`→half `(8,64)`,`upcast<32>`→float `(8,32)`。这里的 "Atom" = **Layout atom(最小重复布局瓦片)**,不是 MMA atom;`tile_to_shape` 拿它平铺铺满大 smem(贴瓷砖)。
 
+  **(b') ★ 用户理论:Layout 把 8×8 swizzle 画布的"行数"按 dtype 压缩,`有效行数 = 2^B / sizeof = 8/sizeof`(B=3)**。half(2B)→4 行,float(4B)→2 行。推导:atom 固定 = 8 layout行 × 128字节 → 总元素=1024/sizeof → offset 最高有效位=9-log2(sizeof) → 行 source(bit7,8,9)活跃位数=3-log2(sizeof) → 行数=2^(3-log2(sizeof))=8/sizeof。**只压行不压列**:列(target bit4,5,6)总被 j+i低位填满恒=8;dtype 越大→总元素越少→高位 offset 越早死→行 source 高位失活→行压缩。(与 (c) 的"最高有效位判据"是同一回事的两种表述。)
+
   **(c) ★ 用户的关键判据:atom 元素数的最高有效位决定 swizzle 强度**。atom 总元素数决定 offset 用几位;若行维度(source bits)的高位恒为 0,则行数减半。
     - half: 8×64=512=`0b1_1111_1111`(9位,**bit9=0**)。bit9 是行 source(7,8,9)最高位 → 行 8→**4**。画布实际 = **4 行 × 8 列**(行减半,非列减半)。→ **4 组行模式**(只 bit7,8 活跃)。
     - float: 8×32=256=`0b1111_1111`(8位,**bit8,9=0**)。行 source 只剩 bit7 → **2 行** → **2 组行模式**。float 更弱因 atom 更小,高位 source 用不上。

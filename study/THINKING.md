@@ -610,7 +610,7 @@ atom        MMA_Atom/Copy_Atom     单条 PTX(W5/W6)
 **★★ 教训(本条最重要,优先级高于结论)**
 1. **源码里 commit 的"打印结果"注释会过时**。把 O41 的"实测胜过脑内推导"升级成 **"实跑胜过源码里的注释"** —— 关键数值自己重新跑一遍生成,别信注释。
 2. **别因为"注释/权威/用户都说 X"就推翻自己算对的 first-principles trace**。agent 手推一直给 B=128(与 ALayout/BLayout 对称一致),却因注释=256 反复自我怀疑、绕圈编出"datapath 内部 N/2 ≠ SMEM 256 两层"这种弥合鬼话。**trace 与注释打架时,跑代码,不要弥合。**
-3. **host 探针可零成本祛魅**:CuTe layout 代数全是 host constexpr。g++ + 一套 CUDA stub 头(`cuda_runtime_api`/`vector_types`/`cuda_fp16`/`cuComplex`/`cuda.h`/`cuda/std/*` 转发桩)即可在**无 GPU、无 CUDA toolkit** 机器跑 `make_tiled_mma`/`partition_shape_*`/`print`。探针:`study/stage3_gemm/week10_warpspec_writeup/exercises/probe_partition_b_sm100.cu`。
+3. **host 探针可零成本祛魅**:CuTe layout 代数全是 host constexpr。g++ + 一套 CUDA stub 头(`cuda_runtime_api`/`vector_types`/`cuda_fp16`/`cuComplex`/`cuda.h`/`cuda/std/*` 转发桩)即可在**无 GPU、无 CUDA toolkit** 机器跑 `make_tiled_mma`/`partition_shape_*`/`make_tma_atom`/`tma_partition`/`print`。**已固化为脚手架 `study/host_probe/`(stub + Makefile + README,`make run` 或 `make run PROBE=xxx.cu`)** —— 以后凡"shape 到底是多少"先来这跑。现成探针:`study/stage3_gemm/week10_warpspec_writeup/exercises/probe_ex05_shapes_sm100.cu`(全量复刻 example 05)、`probe_partition_b_sm100.cu`。
 4. **2-SM 真实收益完整清单**:① 省一半 B 的 SMEM/带宽(沿 N 分摊,本条);② 一条指令单 CTA 单线程发射(`05:368/377`,PTX`:570`)省发射开销;③ 跨 2-SM 大 TMEM 累加器(`tmem_frg_2sm` mma_traits:2042 vs 1SM`:1103`)。
 
 ---

@@ -604,6 +604,7 @@ atom        MMA_Atom/Copy_Atom     单条 PTX(W5/W6)
 
 **根因:example 05 源码注释撒谎**
 - `05_mma_tma_epi_sm100.cu` 的 `// mma_shape_B: ((_256,_16),_1,_4)`(:560)和 `// tCsB: ((_256,_16))`(:267)**都是 stale 错注释**。实际代码产出 `((128,16))`。
+- **已全量核对 + 修正:9 处 stale shape**(双向错!gA/gC/gD 注释偏小 128 应为 256〔partition 前的 cluster MMA tile〕;mma_shape_B/sB/tCgB/tCsB/tBgB/tBsB 偏大 256/16384 应为 128/8192〔partition 后 per-CTA,B 沿 N 分摊〕)。改正依据 = 全量复刻探针 `study/stage3_gemm/week10_warpspec_writeup/exercises/probe_ex05_shapes_sm100.cu`(nvcc/5060Ti 或 g++host 都可跑)。C/D 的 `(_1,_4096)` 注释本就对(与 B-bug 无关)。
 - agent 第 3 轮还拿生产 collective `sm100_mma_warpspecialized.hpp:123` "也用 partition_shape_B" 去"佐证 256" —— **循环论证**:用 stale 注释解读生产代码,越证越歪。
 
 **★★ 教训(本条最重要,优先级高于结论)**

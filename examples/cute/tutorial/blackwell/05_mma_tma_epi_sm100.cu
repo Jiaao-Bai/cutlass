@@ -176,6 +176,13 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
   // The CTA layout within the Cluster: (V,M,N,K) -> CTA idx
   Layout cluster_layout_vmnk = tiled_divide(make_layout(cluster_shape),
                                             make_tile(typename TiledMMA::AtomThrID{}));
+  // 具体值(M=512,N=1024,K=256, cluster=(4,4,1), 2SM-MMA):
+  //   cluster_shape                          = (_4,_4,_1)
+  //   make_layout(cluster_shape)             = (_4,_4,_1):(_1,_4,_16)
+  //   TiledMMA::AtomThrID                    = _2:_1            (2 个 peer CTA 协作一条 2SM MMA)
+  //   make_tile(AtomThrID)                   = (_2)             (沿 mode0 切出 V=2 的子 tile)
+  //   ⇒ cluster_layout_vmnk = (_2,_2,_4,_1):(_1,_2,_4,_16)     (V,M,N,K)=(2,2,4,1)
+  //     mode0 的 4 被拆成 V=2(peer)·M=2(剩余 M 簇)，N=4 与 K=1 原样保留
 
   // Construct the MMA grid coordinate from the CTA grid coordinate
   auto mma_coord_vmnk = make_coord(blockIdx.x % size<0>(cluster_layout_vmnk), // Peer CTA coordinate
@@ -192,9 +199,16 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
   //   * Projection to ignore unwanted modes of the Tiler and Coordinate
   auto mma_coord = select<1,2,3>(mma_coord_vmnk);
   Tensor gA = local_tile(mA, mma_tiler, mma_coord, Step<_1, X,_1>{});  // (MmaTile_M, MmaTile_K, Tiles_K)
+  // 具体值: mA=(512,256); mma_tiler=(_256,_256,_64); Step<_1,X,_1> 投影掉 N 模 ⇒ 用 tiler(_256,_,_64)
+  //   gA = (_256,_64,4):(_1@1,_1@0,_64@0)  (MmaTile_M=256, MmaTile_K=64, Tiles_K=256/64=4)
   Tensor gB = local_tile(mB, mma_tiler, mma_coord, Step< X,_1,_1>{});  // (MmaTile_N, MmaTile_K, Tiles_K)
+  // 具体值: mB=(1024,256); Step<X,_1,_1> 投影掉 M 模 ⇒ 用 tiler(_,_256,_64)
+  //   gB = (_256,_64,4):(_1@1,_1@0,_64@0)  (MmaTile_N=256, MmaTile_K=64, Tiles_K=4)
   Tensor gC = local_tile(mC, mma_tiler, mma_coord, Step<_1,_1, X>{});  // (MmaTile_M, MmaTile_N)
+  // 具体值: mC=(512,1024); Step<_1,_1,X> 投影掉 K 模 ⇒ 用 tiler(_256,_256,_)
+  //   gC = (_256,_256):(1024,_1)  (MmaTile_M=256, MmaTile_N=256)
   Tensor gD = local_tile(mD, mma_tiler, mma_coord, Step<_1,_1, X>{});  // (MmaTile_M, MmaTile_N)
+  // 具体值: mD=(512,1024) ⇒ gD = (_256,_256):(1024,_1)  (MmaTile_M=256, MmaTile_N=256)
 
   if (thread0()) {
     print("mA:\t"); print(mA); print("\n");   // mA:   ArithTuple(_0,_0) o (512,256):(_1@1,_1@0)
@@ -204,8 +218,8 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
 
     print("gA:\t"); print(gA); print("\n");   // gA:   ArithTuple(_0,0) o (_256,_64,4):(_1@1,_1@0,_64@0)   <- 改正,原误作 (_128,_64,4)
     print("gB:\t"); print(gB); print("\n");   // gB:   ArithTuple(_0,0) o (_256,_64,4):(_1@1,_1@0,_64@0)
-    print("gC:\t"); print(gC); print("\n");   // gC:   gmem_ptr[32b](GMEM_ADDR_C + offset_for_mma_tile) o (_256,_256):(256,_1)   <- 改正,原误作 (_128,_256)
-    print("gD:\t"); print(gD); print("\n");   // gD:   gmem_ptr[32b](GMEM_ADDR_D + offset_for_mma_tile) o (_256,_256):(256,_1)   <- 改正,原误作 (_128,_256)
+    print("gC:\t"); print(gC); print("\n");   // gC:   gmem_ptr[32b](GMEM_ADDR_C + offset_for_mma_tile) o (_256,_256):(1024,_1)   <- 改正,shape 原误作 (_128,_256); stride 原误作 (256,_1)(那是 N=256 的捕获,本例 N=1024 行宽=1024)
+    print("gD:\t"); print(gD); print("\n");   // gD:   gmem_ptr[32b](GMEM_ADDR_D + offset_for_mma_tile) o (_256,_256):(1024,_1)   <- 改正,同 gC
   } __syncthreads();
 
   // The SMEM tensors
@@ -216,7 +230,11 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
 
   // Represent the SMEM buffers for A and B
   Tensor tCsA = shared_storage.tensor_sA();         // (MmaA, NumMma_M, NumMma_K, Tiles_K)
+  // 具体值: ASmemLayout = sA_layout = Sw<3,4,3> ((_128,_16),_1,_4):((_64,_1),_0,_16)
+  //   tCsA 形状 ((_128,_16),_1,_4)  (MmaA=(128,16), NumMma_M=1, NumMma_K=4)  ※单 buffer,无 Tiles_K 维
   Tensor tCsB = shared_storage.tensor_sB();         // (MmaB, NumMma_M, NumMma_K, Tiles_K)
+  // 具体值: BSmemLayout = sB_layout = Sw<3,4,3> ((_128,_16),_1,_4):((_64,_1),_0,_16)
+  //   tCsB 形状 ((_128,_16),_1,_4)  (MmaB=(128,16), NumMma_N=1, NumMma_K=4)
 
   //
   // Mma partitioning for A and B
@@ -225,15 +243,21 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
   auto mma_v = get<0>(mma_coord_vmnk);
   ThrMMA cta_mma = tiled_mma.get_slice(mma_v);   // Use Peer CTA coordinate
   Tensor tCgA = cta_mma.partition_A(gA);         // (MmaA, NumMma_M, NumMma_K, Tiles_K)
+  // 具体值: gA=(_256,_64,4); 2SM-MMA 把 M=256 拆给 2 个 peer CTA(每 CTA 128)，K=64 拆成 4 个 MMA(每 16)
+  //   tCgA = ((_128,_16),_1,_4,4):((_1@1,_1@0),_0,_16@0,_64@0)  (MmaA=(128,16),NumMma_M=1,NumMma_K=4,Tiles_K=4)
   Tensor tCgB = cta_mma.partition_B(gB);         // (MmaB, NumMma_N, NumMma_K, Tiles_K)
+  // 具体值: gB=(_256,_64,4) ⇒ tCgB = ((_128,_16),_1,_4,4):((_1@1,_1@0),_0,_16@0,_64@0)
+  //   (MmaB=(128,16),NumMma_N=1,NumMma_K=4,Tiles_K=4)
   Tensor tCgC = cta_mma.partition_C(gC);         // (MmaC, NumMma_M, NumMma_N)
+  // 具体值: gC=(_256,_256):(1024,_1); 2SM 把 M=256 拆成每 CTA 128 ⇒ tCgC = ((_128,_256),_1,_1):((1024,_1),_0,_0)
   Tensor tCgD = cta_mma.partition_C(gD);         // (MmaC, NumMma_M, NumMma_N)
+  // 具体值: gD=(_256,_256):(1024,_1) ⇒ tCgD = ((_128,_256),_1,_1):((1024,_1),_0,_0)
 
   if (thread0()) {
     print("tCgA:\t"); print(tCgA); print("\n");  // tCgA:   ArithTuple(_0,0) o ((_128,_16),_1,_4,4):((_1@1,_1@0),_0,_16@0,_64@0)
     print("tCgB:\t"); print(tCgB); print("\n");  // tCgB:   ArithTuple(_0,0) o ((_128,_16),_1,_4,4):((_1@1,_1@0),_0,_16@0,_64@0)   <- 改正,原误作 ((_256,_16),_1,_4,4)
-    print("tCgC:\t"); print(tCgC); print("\n");  // tCgC:   gmem_ptr[32b](GMEM_ADDR_C + offset_for_mma_tile + offset_for_mma) o ((_128,_256),_1,_1):((256,_1),_0,_0)
-    print("tCgD:\t"); print(tCgD); print("\n");  // tCgD:   gmem_ptr[32b](GMEM_ADDR_D + offset_for_mma_tile + offset_for_mma) o ((_128,_256),_1,_1):((256,_1),_0,_0)
+    print("tCgC:\t"); print(tCgC); print("\n");  // tCgC:   gmem_ptr[32b](GMEM_ADDR_C + offset_for_mma_tile + offset_for_mma) o ((_128,_256),_1,_1):((1024,_1),_0,_0)   <- 改正,stride 原误作 (256,_1)(N=1024 行宽=1024)
+    print("tCgD:\t"); print(tCgD); print("\n");  // tCgD:   gmem_ptr[32b](GMEM_ADDR_D + offset_for_mma_tile + offset_for_mma) o ((_128,_256),_1,_1):((1024,_1),_0,_0)   <- 改正,同 tCgC
   } __syncthreads();
 
   // MMA Fragment Allocation
@@ -243,12 +267,18 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
   // - tCrA and tCrB provide descriptor views of tCsA and tCsB respectively
   // - The first mode of each descriptor represents the SMEM for a single MMA operation
   Tensor tCrA = cta_mma.make_fragment_A(tCsA);      // (MmaA, NumMma_M, NumMma_K, Tiles_K)
+  // 具体值: 把 tCsA 的 SMEM 包成 UMMA 描述符(不存数据,只存地址/swizzle 信息)
+  //   tCrA = UMMA::DescriptorIterator o (_1,_1,_4):(_0,_0,_2)  (NumMma_M=1,NumMma_K=4;K 上 4 个描述符,步进 2)
   Tensor tCrB = cta_mma.make_fragment_B(tCsB);      // (MmaB, NumMma_M, NumMma_K, Tiles_K)
+  // 具体值: tCrB = UMMA::DescriptorIterator o (_1,_1,_4):(_0,_0,_2)  (NumMma_N=1,NumMma_K=4)
 
   // TMEM Allocation
   // On SM100 architecture, accumulators are stored exclusively in tensor memory (TMEM).
   // ThrMma's make_fragment_C() creates a TMEM tensor with the appropriate layout for the accumulator.
   Tensor tCtAcc = cta_mma.make_fragment_C(tCgC);    // (MmaC, NumMma_M, NumMma_N)
+  // 具体值: 在 TMEM 里开累加器,形状跟 tCgC 对齐
+  //   tCtAcc = tmem_[32b] o ((_128,_256),_1,_1):((_65536,_1),_0,_0)
+  //   (MmaC=(128,256): M 跨 TMEM 行 stride=65536=0x10000(列偏移在高位), N 连续 stride=1)
 
   uint32_t elect_one_thr  = cute::elect_one_sync();
   uint32_t elect_one_warp = (threadIdx.x / 32 == 0);
@@ -290,6 +320,8 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
 
   // Construct the CTA-in-Cluster coordinate for multicasting
   auto cta_in_cluster_coord_vmnk = cluster_layout_vmnk.get_flat_coord(int(cute::block_rank_in_cluster()));
+  // 具体值: cluster_layout_vmnk=(_2,_2,_4,_1); 把 rank∈[0,16) 反查成 (V,M,N,K) 坐标
+  //   例如 block_rank=5 ⇒ (V,M,N,K)=(1,0,1,0)；V=get<0>=peer 内序号, M=get<1>, N=get<2>
   auto elect_one_cta  = get<0>(cta_in_cluster_coord_vmnk) == Int<0>{};
 
   // Project the cluster_layout for tma_A along the N-modes
@@ -297,12 +329,19 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
                                     get<2>(cta_in_cluster_coord_vmnk),          // The CTA coordinate along N mode of the cluster
                                     make_layout(size<2>(cluster_layout_vmnk)),  // The CTA layout along N mode of the cluster
                                     group_modes<0,3>(tCsA), group_modes<0,3>(tCgA));
+  // 具体值: size<2>(cluster_layout_vmnk)=_4 ⇒ N 模 CTA 布局 make_layout(_4)=(_4):(_1)  (A 沿 N 多播给 4 个 CTA)
+  //   group_modes<0,3>(tCgA)=((_128,_16,_1,_4),4)=((_8192),4); group_modes<0,3>(tCsA)=((_8192))
+  //   tAgA = (((_64,_128),_1),4):(((_1@0,_1@1),_0),_64@0)   (mode0=单次 TMA 搬的 MK 块, 末维 4=Tiles_K)
+  //   tAsA = ((_8192,_1)):((_1,_0))                          (SMEM 落点, 一次搬 128*64=8192 个 half)
 
   // Project the cluster_layout for tma_B along the M-modes
   auto [tBgB, tBsB] = tma_partition(tma_atom_B,
                                     get<1>(cta_in_cluster_coord_vmnk),          // The CTA coordinate along M mode of the cluster
                                     make_layout(size<1>(cluster_layout_vmnk)),  // The CTA layout along M mode of the cluster
                                     group_modes<0,3>(tCsB), group_modes<0,3>(tCgB));
+  // 具体值: size<1>(cluster_layout_vmnk)=_2 ⇒ M 模 CTA 布局 make_layout(_2)=(_2):(_1)  (B 沿 M 多播给 2 个 CTA)
+  //   tBgB = (((_64,_128),_1),4):(((_1@0,_1@1),_0),_64@0)   (末维 4=Tiles_K)
+  //   tBsB = ((_8192,_1)):((_1,_0))                          (一次搬 128*64=8192 个 half)
 
   // Project the cluster_layout and cta_coord along the N-mode to determine the multicast mask for A
   uint16_t tma_mcast_mask_a = create_tma_multicast_mask<2>(cluster_layout_vmnk, cta_in_cluster_coord_vmnk);
@@ -393,30 +432,47 @@ gemm_device(ATensor mA,                      // (Gemm_M, Gemm_K)
 
   // Apply rank-2 epilogue tiler to rank-2 MMA_V mode
   auto epi_tiler_v = make_tile(epi_tiler_mn);               // (EpiTile)
+  // 具体值: epi_tiler_mn=(_128,_64); epi_tiler_v=make_tile((_128,_64))  (把 (M,N) tile 包成作用于 MMA_V 模的单个 tile)
   Tensor tAcc_epi = zipped_divide(tCtAcc, epi_tiler_v);     // (EpiTile,NumTiles)
+  // 具体值: tCtAcc 的 (_128,_256) 按 (128,64) 切 ⇒ M:128/128=1, N:256/64=4
+  //   tAcc_epi = ((_128,_64),(_1,_4,_1,_1)):((_65536,_1),(_0,_64,_0,_0))   (EpiTile=(128,64), NumTiles=4)
   Tensor gC_epi   = zipped_divide(tCgC,   epi_tiler_v);     // (EpiTile,NumTiles)
+  // 具体值: tCgC 的 (_128,_256):(1024,_1) 按 (128,64) 切 ⇒ gC_epi = ((_128,_64),(_1,_4,_1,_1)):((1024,_1),(_0,_64,_0,_0))
   Tensor gD_epi   = zipped_divide(tCgD,   epi_tiler_v);     // (EpiTile,NumTiles)
+  // 具体值: gD_epi = ((_128,_64),(_1,_4,_1,_1)):((1024,_1),(_0,_64,_0,_0))  (与 gC_epi 同形, NumTiles=4)
 
   // Construct corresponding SMEM tensors
   Tensor sC_epi = shared_storage.tensor_sC();               // (EpiTile)
+  // 具体值: CSmemLayout=sC_layout=Sw<3,4,3> ((_8,_16),(_32,_2)):((_32,_256),(_1,_4096))  (1 个 EpiTile=128*64=8192 floats)
   Tensor sD_epi = shared_storage.tensor_sD();               // (EpiTile)
+  // 具体值: DSmemLayout=sD_layout=Sw<3,4,3> ((_8,_16),(_32,_2)):((_32,_256),(_1,_4096))  (同 sC_epi)
 
   // Partition for TMA
   auto [tGS_gC, tGS_sC] = tma_partition(tma_atom_C, sC_epi, gC_epi); // (GMEM -> SMEM)
+  // 具体值(形状级): tma_atom_C 把 EpiTile 全塞进 mode0 ⇒ tGS_sC=((8192),...) 一次搬整个 EpiTile=8192 floats 到 SMEM;
+  //   tGS_gC 末维=NumTiles=4(配合循环里的 tGS_gC(_,epi_tile_idx))。精确 stride 需在 B200 上 print 验证。
   auto [tSG_gD, tSG_sD] = tma_partition(tma_atom_D, sD_epi, gD_epi); // (SMEM -> GMEM)
+  // 具体值(形状级): tSG_sD=((8192),...) SMEM 源; tSG_gD 末维=NumTiles=4, 方向是 SMEM->GMEM 存 D。
 
   // Reset transaction bytes for C load
   tma_transaction_bytes = sizeof(make_tensor_like(tGS_sC));
 
   // Partition for TMEM accumulators load (TMEM -> RMEM)
   TiledCopy t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tAcc_epi(_,_0{}));
+  // 具体值: 用 tcgen05.ld(32 数据通路×32b)在 1 个 EpiTile=(128,64) 上铺 128 线程的 TiledCopy
+  //   每线程每 EpiTile 搬 128*64/128 = 64 个 float (TMEM -> RMEM)
   ThrCopy   thr_t2r  = t2r_copy.get_slice(threadIdx.x);
   Tensor tTR_tAcc = thr_t2r.partition_S(tAcc_epi);          // (TmemCpy,NumTmemCpy,NumTiles)
+  // 具体值: 本线程视角 ⇒ tTR_tAcc 形状 (TmemCpy, NumTmemCpy, NumTiles=4)，前两模乘积=64(每 tile 每线程 64 个 float)
   Tensor tTR_sC   = thr_t2r.partition_D(sC_epi);            // (TmemCpy,NumTmemCpy)
+  // 具体值: tTR_sC 形状 (TmemCpy, NumTmemCpy)，元素数=64(本线程在 1 个 EpiTile 的 SMEM-C 落点)
   Tensor tTR_sD   = thr_t2r.partition_D(sD_epi);            // (TmemCpy,NumTmemCpy)
+  // 具体值: tTR_sD 形状 (TmemCpy, NumTmemCpy)，元素数=64(本线程在 1 个 EpiTile 的 SMEM-D 落点)
   // Allocate register tensors
   Tensor tTR_rC = make_tensor_like(tTR_sC);                 // (TmemCpy,NumTmemCpy)
+  // 具体值: 与 tTR_sC 同形的寄存器张量，64 个 float/线程(放 C)
   Tensor tTR_rD = make_fragment_like(tTR_sD);               // (TmemCpy,NumTmemCpy)
+  // 具体值: 与 tTR_sD 同形的寄存器张量，64 个 float/线程(放累加器/最终 D)
 
   // Loop over the epilogue tiles
   CUTE_UNROLL
@@ -482,9 +538,13 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
 
   // Represent the full tensors in global memory
   Tensor mA = make_tensor(make_gmem_ptr(device_ptr_A), layout_A);      // (Gemm_M, Gemm_K)
+  // 具体值: mA = gmem_ptr[16b] o (512,256):(256,_1)
   Tensor mB = make_tensor(make_gmem_ptr(device_ptr_B), layout_B);      // (Gemm_N, Gemm_K)
+  // 具体值: mB = gmem_ptr[16b] o (1024,256):(256,_1)
   Tensor mC = make_tensor(make_gmem_ptr(device_ptr_C), layout_C);      // (Gemm_M, Gemm_N)
+  // 具体值: mC = gmem_ptr[32b] o (512,1024):(1024,_1)
   Tensor mD = make_tensor(make_gmem_ptr(device_ptr_D), layout_D);      // (Gemm_M, Gemm_N)
+  // 具体值: mD = gmem_ptr[32b] o (512,1024):(1024,_1)
 
   // Get M, N, K dimensions of the GEMM we are running
   auto Gemm_M = shape<0>(layout_A);
@@ -522,6 +582,9 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
   auto bN = tile_size<1>(tiled_mma);             // MMA Tile N. We'll use 1 MMAs per MMA Tile M.
   auto bK = tile_size<2>(tiled_mma) * Int<4>{};  // MMA Tile K. We'll use 4 MMAs per MMA Tile K. For 16b types, tcgen05.mma has K16.
   auto mma_tiler = make_shape(bM, bN, bK);       // (MMA_M, MMA_N, MMA_K)
+  // 具体值: tiled_mma 的 Shape_MNK=(_256,_256,_16)
+  //   bM=tile_size<0>=_256, bN=tile_size<1>=_256, bK=tile_size<2>*4=_16*4=_64
+  //   ⇒ mma_tiler = (_256,_256,_64)
 
   // In SM90,  the MMAs are CTA-local and perform thread-level partitioning.
   // In SM100, the MMAs are Cluster-local and perform CTA-level partitioning.
@@ -552,8 +615,11 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
 
   // Pre-partitioned Tile Shape (MmaTile_M, MmaTile_K) to post-partitioned (MmaA, NumMma_M, NumMma_K)
   auto mma_shape_A = partition_shape_A(tiled_mma, make_shape(size<0>(mma_tiler), size<2>(mma_tiler)));
+  // 具体值: 输入 (MmaTile_M,MmaTile_K)=(_256,_64); 2SM 把 M=256 分到 2 个 CTA(每 128), K=64 拆成 4 个 K16
+  //   ⇒ mma_shape_A = ((_128,_16),_1,_4)  (MmaA=(128,16), NumMma_M=1, NumMma_K=4)
   // Pre-partitioned Tile Shape (MmaTile_N, MmaTile_K) to post-partitioned (MmaB, NumMma_N, NumMma_K)
   auto mma_shape_B = partition_shape_B(tiled_mma, make_shape(size<1>(mma_tiler), size<2>(mma_tiler)));
+  // 具体值: 输入 (MmaTile_N,MmaTile_K)=(_256,_64) ⇒ mma_shape_B = ((_128,_16),_1,_4)  (MmaB=(128,16),NumMma_N=1,NumMma_K=4)
 
   // Print and inspect mma_shape_A, and mma_shape_B for this example.
   print("mma_shape_A:\t"); print(mma_shape_A); print("\n");  // mma_shape_A:  ((_128,_16),_1,_4)
@@ -563,7 +629,10 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
   //  * However, expressing swizzled layouts is very hard.
   //  * CuTe provides tile_to_mma_shape functions for SM100 to create swizzled layouts for post-partitioned Mma Shapes
   auto sA_layout = UMMA::tile_to_mma_shape(UMMA::Layout_K_SW128_Atom<TypeA>{}, mma_shape_A);
+  // 具体值: 把 SW128(128B swizzle, half) atom 平铺到 mma_shape_A=((_128,_16),_1,_4)
+  //   ⇒ sA_layout = Sw<3,4,3> ((_128,_16),_1,_4):((_64,_1),_0,_16)  (cosize=128*16*4=8192 个 half)
   auto sB_layout = UMMA::tile_to_mma_shape(UMMA::Layout_K_SW128_Atom<TypeB>{}, mma_shape_B);
+  // 具体值: ⇒ sB_layout = Sw<3,4,3> ((_128,_16),_1,_4):((_64,_1),_0,_16)  (cosize=8192 个 half)
 
   // Print and inspect sA_layout and sB_layout for this example.
   print("sA_layout:\t"); print(sA_layout); print("\n");      // sA_layout:   Sw<3,4,3> o smem_ptr[16b](unset) o ((_128,_16),_1,_4):((_64,_1),_0,_16)
@@ -575,18 +644,25 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
 
   // Pre-partitioned Tile Shape (MmaTile_M, MmaTile_N) to post-partitioned ((MmaM,MmaN), NumMma_M, NumMma_N)
   auto mma_shape_C = partition_shape_C(tiled_mma, make_shape(size<0>(mma_tiler), size<1>(mma_tiler)));
+  // 具体值: 输入 (MmaTile_M,MmaTile_N)=(_256,_256); 2SM 把 M=256 分到 2 个 CTA(每 128)
+  //   ⇒ mma_shape_C = ((_128,_256),_1,_1)  (MmaC=(128,256), NumMma_M=1, NumMma_N=1)
 
   // For TMA epilogue performance it may be beneficial to iterate over the output in smaller tiles than the MMA tile
   auto epi_tiler = make_tile(size<0,0>(mma_shape_C), size<0,1>(mma_shape_C) / Int<4>{});  // 4 TMA copies per CTA per MMA tile
+  // 具体值: size<0,0>(mma_shape_C)=_128(M), size<0,1>(mma_shape_C)/4=_256/4=_64(N) ⇒ epi_tiler = (_128,_64)
 
   // SMEM layouts for C and D should match the epilogue tile
   auto sC_layout_mn = tile_to_shape(UMMA::Layout_K_SW128_Atom<TypeC>{}, // MMA K-major is equivalent to epilogue N-major
                                     make_shape(size<0>(epi_tiler), size<1>(epi_tiler)));
+  // 具体值: 把 SW128(128B swizzle, float) atom 铺到 (M,N)=(_128,_64) ⇒ sC_layout_mn = Sw<3,4,3> (_128,_64):(...) (cosize=8192 floats)
   auto sC_layout = group<0,2>(sC_layout_mn); // Group modes for tma_partition
+  // 具体值: group<0,2> 把前两模并起来供 tma_partition ⇒ sC_layout = Sw<3,4,3> ((_8,_16),(_32,_2)):((_32,_256),(_1,_4096))
 
   auto sD_layout_mn = tile_to_shape(UMMA::Layout_K_SW128_Atom<TypeD>{}, // MMA K-major is equivalent to epilogue N-major
                                     make_shape(size<0>(epi_tiler), size<1>(epi_tiler)));
+  // 具体值: ⇒ sD_layout_mn = Sw<3,4,3> (_128,_64):(...) (cosize=8192 floats, 与 sC_layout_mn 同)
   auto sD_layout = group<0,2>(sD_layout_mn); // Group modes for tma_partition
+  // 具体值: ⇒ sD_layout = Sw<3,4,3> ((_8,_16),(_32,_2)):((_32,_256),(_1,_4096))
 
   print("sC_layout:\t"); print(sC_layout); print("\n");      // sC_layout:   Sw<3,4,3> o smem_ptr[32b](unset) o ((_8,_16),(_32,_2)):((_32,_256),(_1,_4096))
   print("sD_layout:\t"); print(sD_layout); print("\n");      // sD_layout:   Sw<3,4,3> o smem_ptr[32b](unset) o ((_8,_16),(_32,_2)):((_32,_256),(_1,_4096))
@@ -602,8 +678,11 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
 
   // The cluster shape and layout
   auto cluster_shape = make_shape(Int<4>{}, Int<4>{}, Int<1>{});
+  // 具体值: cluster_shape = (_4,_4,_1)  (ClusterM=4, ClusterN=4, ClusterK=1)
   Layout cluster_layout_vmnk = tiled_divide(make_layout(cluster_shape),
                                             make_tile(typename decltype(tiled_mma)::AtomThrID{}));
+  // 具体值: make_layout(cluster_shape)=(_4,_4,_1):(_1,_4,_16); AtomThrID=_2, make_tile(_2)=(_2)
+  //   ⇒ cluster_layout_vmnk = (_2,_2,_4,_1):(_1,_2,_4,_16)  (V,M,N,K)=(2,2,4,1)  (与 kernel 内同一份)
 
   // SM100 interface for creating TMA loads.
   Copy_Atom tma_atom_A = make_tma_atom_A_sm100(
@@ -615,6 +694,7 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
       cluster_layout_vmnk);           // ClusterLayout_VMNK. Unlike Sm90 interface where only the multicasting mode is passed.
                                       //   We have make_tma_atom_[A|B]_sm100 and which determines the multicast mode.
   Tensor mA_tma = tma_atom_A.get_tma_tensor(shape(mA));   // (Gemm_M, Gemm_K)
+  // 具体值: TMA 张量用 ArithTuple 坐标(非真实指针) ⇒ mA_tma = ArithTuple(_0,_0) o (512,256):(_1@1,_1@0)
 
   print("tma_atom_A:\t"); print(tma_atom_A); print("\n");
   // tma_atom_A:     Copy_Atom
@@ -634,6 +714,7 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
     cluster_layout_vmnk);           // ClusterLayout_VMNK. Unlike Sm90 interface where only the multicasting mode is passed.
                                     //   We have make_tma_atom_[A|B]_sm100 and which determines the multicast mode.
   Tensor mB_tma = tma_atom_B.get_tma_tensor(shape(mB));   // (Gemm_N, Gemm_K)
+  // 具体值: mB_tma = ArithTuple(_0,_0) o (1024,256):(_1@1,_1@0)
 
   print("tma_atom_B:\t"); print(tma_atom_B); print("\n");
   // tma_atom_B:     Copy_Atom
@@ -649,6 +730,7 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
         sC_layout,                  // Destination SMEM layout
         epi_tiler);                 // MN Tiler for epilogue
   Tensor mC_tma = tma_atom_C.get_tma_tensor(shape(mC));   // (Gemm_M, Gemm_N)
+  // 具体值: mC_tma = ArithTuple(_0,_0) o (512,1024):(_1@1,_1@0)  (注:device 端 print 的 mC 显示真实 gmem_ptr+stride(1024,_1))
 
   print("tma_atom_C:\t"); print(tma_atom_C); print("\n");
   // tma_atom_C:     Copy_Atom
@@ -664,6 +746,7 @@ void gemm_host_f16xf16_f32_f32_tnt(TypeA const* device_ptr_A, LayoutA layout_A,
         sD_layout,                  // Source SMEM layout
         epi_tiler);                 // MN Tiler for epilogue
   Tensor mD_tma = tma_atom_D.get_tma_tensor(shape(mD));   // (Gemm_M, Gemm_N)
+  // 具体值: mD_tma = ArithTuple(_0,_0) o (512,1024):(_1@1,_1@0)
 
   print("tma_atom_D:\t"); print(tma_atom_D); print("\n");
   // tma_atom_D:     Copy_Atom
@@ -765,15 +848,19 @@ int main(int argc, char** argv)
   // A tensor MxK K-major (Layout T = Row-Major)
   Layout layout_A = make_layout(make_shape (Gemm_M,   Gemm_K),
                                 make_stride(Gemm_K, Int<1>{}));   // (Gemm_M,Gemm_K):(Gemm_K,_1)
+  // 具体值(默认 M=512,N=1024,K=256): layout_A = (512,256):(256,_1)  (行主序, 每行 K=256 个 half)
   // B tensor NxK K-major (Layout N = Column-Major)
   Layout layout_B = make_layout(make_shape (Gemm_N,   Gemm_K),
                                 make_stride(Gemm_K, Int<1>{}));   // (Gemm_N,Gemm_K):(Gemm_K,_1)
+  // 具体值: layout_B = (1024,256):(256,_1)  (每行 K=256 个 half)
   // C tensor MxN N-major (Layout T = Row-Major)
   Layout layout_C = make_layout(make_shape (Gemm_M,   Gemm_N),
                                 make_stride(Gemm_N, Int<1>{}));   // (Gemm_M,Gemm_N):(Gemm_N,_1)
+  // 具体值: layout_C = (512,1024):(1024,_1)  (行主序, 每行 N=1024 个 float)
   // D tensor MxN N-major (Layout T = Row-Major)
   Layout layout_D = make_layout(make_shape (Gemm_M,   Gemm_N),
                                 make_stride(Gemm_N, Int<1>{}));   // (Gemm_M,Gemm_N):(Gemm_N,_1)
+  // 具体值: layout_D = (512,1024):(1024,_1)  (与 layout_C 同)
 
   // Host allocations and host CuTe tensors for A, B, and C tensors.
   thrust::host_vector<TypeA>   host_A(Gemm_M * Gemm_K);
@@ -815,6 +902,7 @@ int main(int argc, char** argv)
   thrust::host_vector<TypeD> host_D = device_D;
   // Create a non-owning CuTe tensor for D tensor
   Tensor host_tensor_D = make_tensor(host_D.data(), layout_D);
+  // 具体值: host_tensor_D = ptr[32b](ADDR_D) o (512,1024):(1024,_1)
 
   ////////////////////////////////////////////////////////////
   //
